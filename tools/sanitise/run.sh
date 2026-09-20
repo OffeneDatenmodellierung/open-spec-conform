@@ -197,13 +197,33 @@ probe_caught() {
 }
 
 # --------------------------------------------------------------------------
-# Reading cargo's answers
+# Reading cargo's answers, which are another program's text
 #
-# Asked for rather than assumed. The previous version hard-coded
+# Asked for rather than assumed. An earlier version hard-coded
 # `$ROOT/target/$target/debug/libconform_ffi.a` and linked nothing beside it,
 # which is two assumptions that happened to hold on one machine — and neither
 # survives a `CARGO_TARGET_DIR`, a different profile, or a platform whose Rust
 # static libraries need `-lpthread -ldl -lm` to link at all.
+#
+# Then read with more care than the version after that. This script used to
+# scrape rustc's *rendered* note out of stderr:
+#
+#     note: native-static-libs: -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
+#
+# GitHub Actions sets `CARGO_TERM_COLOR: always`, so on CI that line is
+# wrapped in ANSI and the trailing reset lands inside the last token. The
+# linker was handed `-lc` followed by an escape sequence and said, accurately,
+# `cannot find -lc^[[0m`.
+#
+# Two things changed. `--message-format=json` puts that note on *stdout* as a
+# structured record whose `message` field carries the sentence undecorated,
+# whatever `CARGO_TERM_COLOR` says — the colour lives in a separate `rendered`
+# field this script never takes a value from. And every token that will become
+# a linker argument is then checked anyway, and refused rather than repaired if
+# it holds anything outside a small allow-list.
+#
+# `check_the_parser` below runs that guard against fixtures on every
+# invocation, because a guard nobody exercises is a comment.
 # --------------------------------------------------------------------------
 
 # The staticlib path out of a `--message-format=json` stream.
@@ -218,11 +238,123 @@ cdylib_from() {
         tr ',' '\n' | tr -d '"' | grep -E '\.(so|dylib|dll)$' | head -1
 }
 
-# The system libraries out of rustc's `--print native-static-libs` note. Passed
-# through in the order printed, because the line above it in rustc's own output
-# says the order and any duplication can be significant.
+# The `native-static-libs` note out of the STRUCTURED `message` field of a
+# `compiler-message` record — never out of its `rendered` sibling, and never
+# out of stderr.
+#
+# The pattern names `"message":"native-static-libs: ` exactly, which the
+# rendered copy cannot match: rendered text reads `note: native-static-libs: `
+# and the outer `"message"` key holds an object rather than a string.
 native_from() {
-    sed -n 's/.*native-static-libs: //p' "$1" | head -1
+    sed -n 's/.*"message":"native-static-libs: \([^"]*\)".*/\1/p' "$1" | head -1
+}
+
+# Whether a token is safe to hand to a linker.
+#
+# A character allow-list rather than a pattern per flag shape, because the
+# shapes vary by platform and the characters do not: `-lpthread` on Linux,
+# `-framework CoreFoundation` on macOS, bare `kernel32.lib` on Windows,
+# absolute paths anywhere. What none of them contain is a control character, a
+# quote, a space or a shell metacharacter.
+is_safe_token() {
+    case "$1" in
+        "") return 1 ;;
+        *[!A-Za-z0-9._/+:=,-]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# A token as it can be put in a message without doing to the reader's terminal
+# what it would have done to the linker. A script that refuses an escape
+# sequence and then echoes it has protected nothing.
+printable() {
+    printf '%s' "$1" | LC_ALL=C tr -c '[:print:]' '?'
+}
+
+# Filled by `read_native_libs`.
+NATIVE_FLAGS=()
+NATIVE_PROBLEM=""
+
+# read_native_libs <cargo json stdout file>
+#
+# Sets `NATIVE_FLAGS` on success. On failure sets `NATIVE_PROBLEM` and leaves
+# `NATIVE_FLAGS` empty, so a caller that ignored the status would link nothing
+# rather than link something unexamined.
+read_native_libs() {
+    NATIVE_FLAGS=()
+    NATIVE_PROBLEM=""
+
+    local note token
+    note="$(native_from "$1")"
+    if [ -z "$note" ]; then
+        NATIVE_PROBLEM="cargo's message stream carried no structured native-static-libs note"
+        return 1
+    fi
+
+    for token in $note; do
+        if ! is_safe_token "$token"; then
+            NATIVE_FLAGS=()
+            NATIVE_PROBLEM="a library flag holds a character this script will not pass to a linker: $(printable "$token")"
+            return 1
+        fi
+        NATIVE_FLAGS+=("$token")
+    done
+
+    if [ "${#NATIVE_FLAGS[@]}" -eq 0 ]; then
+        NATIVE_PROBLEM="the native-static-libs note named no libraries"
+        return 1
+    fi
+    return 0
+}
+
+# --------------------------------------------------------------------------
+# The harness's own parser, checked before anything trusts it
+#
+# Two fixtures and two counted checks, on every invocation. The escape in the
+# second is the one that actually reached a linker, and it is present as a real
+# `ESC` byte rather than as a description of one.
+# --------------------------------------------------------------------------
+check_the_parser() {
+    say "the harness's own parser"
+    local fixture="$BUILD/parser-fixture.json"
+
+    printf '%s\n' \
+        '{"reason":"compiler-message","message":{"level":"note","message":"native-static-libs: -lgcc_s -lpthread -lm -ldl -lc","rendered":"note: whatever"}}' \
+        >"$fixture"
+    checks_run=$((checks_run + 1))
+    if read_native_libs "$fixture" && [ "${NATIVE_FLAGS[*]}" = "-lgcc_s -lpthread -lm -ldl -lc" ]; then
+        pass "a clean note yields exactly the flags it names, in order"
+    else
+        fail "the parser could not read a clean note" \
+            "problem: ${NATIVE_PROBLEM:-none reported}"
+    fi
+
+    # A real ESC byte, inserted by printf so that reading this file is not an
+    # exercise in trusting your terminal.
+    printf '{"reason":"compiler-message","message":{"level":"note","message":"native-static-libs: -lpthread -ldl -lc\033[0m"}}\n' \
+        >"$fixture"
+    checks_run=$((checks_run + 1))
+    if read_native_libs "$fixture"; then
+        fail "the parser accepted a library flag carrying an ANSI escape" \
+            "It would have gone to the linker. That is the defect this check exists for," \
+            "and it is why the flags are refused rather than cleaned up." \
+            "got: $(printable "${NATIVE_FLAGS[*]}")"
+    else
+        pass "a flag carrying an ANSI escape is refused — $NATIVE_PROBLEM"
+    fi
+
+    # And the same escape as JSON would have to carry it, six characters rather
+    # than one byte, because the backslash is outside the allow-list too.
+    printf '%s\n' \
+        '{"reason":"compiler-message","message":{"level":"note","message":"native-static-libs: -lpthread -lc\u001b[0m"}}' \
+        >"$fixture"
+    checks_run=$((checks_run + 1))
+    if read_native_libs "$fixture"; then
+        fail "the parser accepted a JSON-escaped ANSI sequence" \
+            "got: $(printable "${NATIVE_FLAGS[*]}")"
+    else
+        pass "a JSON-escaped ANSI sequence is refused too"
+    fi
 }
 
 mkdir -p "$BUILD"
@@ -250,6 +382,23 @@ run_asan() {
 
     local target sysroot rtdir runtime
     target="$(rustc -vV | sed -n 's/^host: //p')"
+
+    # `rustc -vV` is not affected by `CARGO_TERM_COLOR`, so this is a guard
+    # against a class rather than against a known bug — but the triple becomes
+    # a command-line argument two lines below, and the last thing this script
+    # put on a command line without looking at it was an ANSI escape.
+    #
+    # Only the triple gets the token guard. The paths below do not: a home
+    # directory may legitimately contain a space, and they are checked by
+    # having to exist instead.
+    if ! is_safe_token "$target"; then
+        say "AddressSanitizer"
+        arms_run=$((arms_run + 1))
+        checks_run=$((checks_run + 1))
+        fail "the host triple is not a triple: $(printable "$target")"
+        return
+    fi
+
     sysroot="$(rustup run nightly rustc --print sysroot)"
     rtdir="$sysroot/lib/rustlib/$target/lib"
     runtime="$(ls "$rtdir"/librustc-*_rt.asan.* 2>/dev/null | head -1)"
@@ -269,12 +418,13 @@ run_asan() {
     out="$BUILD/asan-build.stdout"
     err="$BUILD/asan-build.stderr"
     checks_run=$((checks_run + 1))
-    if ! RUSTFLAGS="-Zsanitizer=address" cargo +nightly rustc \
+    if ! RUSTFLAGS="-Zsanitizer=address" CARGO_TERM_COLOR=never cargo +nightly rustc \
         -p conform-ffi --lib --target "$target" --crate-type staticlib \
-        --message-format=json-render-diagnostics \
+        --message-format=json --color=never \
         -- --print native-static-libs >"$out" 2>"$err"; then
         fail "the instrumented library did not build"
         quote_log "$err"
+        echo "          | (structured diagnostics are in $out)"
         return
     fi
 
@@ -286,27 +436,24 @@ run_asan() {
         return
     fi
 
-    # Checked rather than defaulted, and for two reasons. The obvious one is
-    # that a Rust `staticlib` does not link on Linux without the list. The
-    # other is bash 3.2, which macOS still ships: under `set -u` it treats
-    # `"${empty[@]}"` as an unbound variable and aborts. Failing here with a
-    # sentence beats aborting three lines later with `native[@]: unbound
-    # variable`, and a missing note means rustc changed something this script
-    # depends on, which is worth being told about either way.
-    local native_libs
-    native_libs="$(native_from "$err")"
-    if [ -z "$native_libs" ]; then
-        fail "rustc printed no 'native-static-libs' note" \
-            "Without it there is no way to know what a static Rust library needs" \
-            "to link against on this platform, and guessing is how this script" \
-            "came to be rewritten."
+    # From stdout now, not stderr, and from the structured field rather than a
+    # rendered one — see the note above `native_from`. `read_native_libs` also
+    # refuses anything it would not pass to a linker, and leaves the list empty
+    # if it does, so there is no way past this point with an unexamined flag.
+    #
+    # Checked rather than defaulted for a second reason too: bash 3.2, which
+    # macOS still ships, treats `"${empty[@]}"` as an unbound variable under
+    # `set -u` and aborts. Failing here with a sentence beats aborting three
+    # lines later with `native[@]: unbound variable`.
+    checks_run=$((checks_run + 1))
+    if ! read_native_libs "$out"; then
+        fail "the library flags could not be read" "$NATIVE_PROBLEM"
         quote_log "$err"
         return
     fi
-    local native
-    read -r -a native <<<"$native_libs"
+    pass "the library flags read clean: ${NATIVE_FLAGS[*]}"
 
-    local link=("$archive" "$runtime" "${native[@]}" -Wl,-rpath,"$rtdir")
+    local link=("$archive" "$runtime" "${NATIVE_FLAGS[@]}" -Wl,-rpath,"$rtdir")
     build "$BUILD/smoke_asan" "$SMOKE_C" "${link[@]}" || return
     build "$BUILD/control_asan" "$CONTROL_C" "${link[@]}" || return
     build "$BUILD/leak_asan" "$LEAK_C" "${link[@]}" || return
@@ -383,10 +530,11 @@ run_valgrind() {
     out="$BUILD/valgrind-build.stdout"
     err="$BUILD/valgrind-build.stderr"
     checks_run=$((checks_run + 1))
-    if ! cargo rustc -p conform-ffi --lib --crate-type cdylib \
-        --message-format=json-render-diagnostics >"$out" 2>"$err"; then
+    if ! CARGO_TERM_COLOR=never cargo rustc -p conform-ffi --lib --crate-type cdylib \
+        --message-format=json --color=never >"$out" 2>"$err"; then
         fail "the library did not build"
         quote_log "$err"
+        echo "          | (structured diagnostics are in $out)"
         return
     fi
 
@@ -423,6 +571,11 @@ run_valgrind() {
         'definitely lost: [1-9]|ERROR SUMMARY: [1-9]' -- \
         "${vg[@]}" "$BUILD/smoke_valgrind" "$REGISTRY" "$DOCUMENT"
 }
+
+# Before either arm, because both of them depend on this script being able to
+# read another program's output without being fooled by it, and because the one
+# time it could not, the failure landed two steps downstream in a linker.
+check_the_parser
 
 case "$WANT" in
     all)

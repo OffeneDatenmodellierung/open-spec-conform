@@ -50,11 +50,11 @@ Two rules follow, and both were learned the hard way (see below):
 If nothing ran at all, `run.sh` exits non-zero and says so, because an exit
 code of 0 there would be a claim nobody made.
 
-## Two defects this harness had, and what they cost
+## Three defects this harness had, and what they cost
 
-Both were found by CI on Linux after the first version of this script passed
-here on macOS, and both are the same shape: right on the machine they were
-written on.
+All three were found by CI after a version of this script passed on the machine
+it was written on, and all three are the same shape: an assumption about the
+environment that nothing asserted.
 
 ### The archive was on the wrong side of the source file
 
@@ -89,6 +89,76 @@ cargo rustc -p conform-ffi --lib --crate-type staticlib \
 
 which also says where the artefact is, so `CARGO_TARGET_DIR` and a different
 profile both work.
+
+### And then that output was read as though it were data
+
+The line above is the fix for the *first* two defects and the cause of the
+third. `--message-format=json-render-diagnostics` keeps no structured copy of
+the `native-static-libs` note: it renders it to stderr and nothing else. So the
+script scraped the rendered text — and GitHub Actions sets
+`CARGO_TERM_COLOR: always`, which means the line is not what it looks like:
+
+```
+ESC[1m ESC[92m note ESC[0m ESC[1m : native-static-libs: … -lm -ldl -lc ESC[0m
+```
+
+The trailing reset landed inside the last token and went to the linker:
+
+```
+/usr/bin/ld: cannot find -lc^[[0m: No such file or directory
+```
+
+The container run that had "verified" the previous fix had colour off, so the
+string was clean there and the bug was invisible — the same trap as the warm
+cache, one layer up.
+
+There is a particular sting in this one. This is the crate family whose CLI has
+an entire module, with three screens of justification, about neutralising ANSI
+escapes so a hostile *document* cannot rewrite an operator's terminal. The
+escape that actually did damage came from our own build tooling, arrived
+somewhere nobody was looking, and was executed.
+
+Three things changed, and the third is the one that matters:
+
+1. **`--message-format=json`**, which puts that note on stdout as a structured
+   record whose `message` field carries the sentence undecorated, whatever
+   `CARGO_TERM_COLOR` says. The colour lives in a separate `rendered` field
+   that this script never takes a value from.
+2. **Colour off at the call site**, by flag and by environment. Belt and
+   braces; it costs nothing and an inherited variable has now cost a red run.
+3. **The answer is distrusted anyway.** Every token that will become a linker
+   argument is checked against a character allow-list and *refused* if it
+   fails — refused, not stripped, because an escape arriving there would mean
+   the assumption about where the input comes from had quietly stopped being
+   true, and repairing that silently hides the thing worth knowing. Displaying
+   and executing are different obligations: `conform-cli` neutralises because
+   it is about to show a human, this refuses because it is about to run a
+   linker.
+
+`check_the_parser` runs that guard against three fixtures — a clean note, one
+carrying a real `ESC` byte, one carrying the `\u001b` a JSON string would have
+to use — at the top of *every* invocation, as counted checks. A guard nobody
+exercises is a comment. Removing the allow-list makes the script fail:
+
+```
+== the harness's own parser
+   ok   — a clean note yields exactly the flags it names, in order
+   FAIL — the parser accepted a library flag carrying an ANSI escape
+          It would have gone to the linker. That is the defect this check exists for,
+          and it is why the flags are refused rather than cleaned up.
+          got: -lpthread -ldl -lc?[0m
+   FAIL — the parser accepted a JSON-escaped ANSI sequence
+FAILED — 2 of 8 checks across 1 checker(s).
+```
+
+Note the `?` where the escape was: a script that refuses an escape sequence and
+then echoes it to a terminal has protected nothing.
+
+The Rust half of the same lesson is in
+`crates/conform-ffi/tests/support/cargo_output.rs`, held to it by
+`crates/conform-ffi/tests/the_output_of_another_program_is_untrusted.rs` — which
+is deliberately not behind a feature, because a test of a guard that only runs
+where the guard is least needed is a test that is absent on the day it matters.
 
 ## What was actually run, and where
 
@@ -159,6 +229,16 @@ where it works; it is not worth faking where it does not.
 `.github/workflows/ci.yml` has a `sanitise` job on `ubuntu-latest` that runs
 this same script. That is where the valgrind arm runs in CI, and it is where
 the leak claim gets made for every pull request.
+
+CI also sets `CARGO_TERM_COLOR: always`, `RUSTFLAGS: -D warnings` and
+`CARGO_INCREMENTAL: 0` in the workflow's `env:` block. Reproduce with those set
+— all three — or a local run is not a reproduction:
+
+```sh
+CARGO_TERM_COLOR=always RUSTFLAGS='-D warnings' CARGO_INCREMENTAL=0 \
+    cargo test --workspace --all-features
+CARGO_TERM_COLOR=always tools/sanitise/run.sh
+```
 
 ## Build output
 
