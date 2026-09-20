@@ -106,16 +106,26 @@ fn the_odcl_entrys_three_absences_are_null_in_json_and_not_recorded_in_the_termi
         );
     }
     // Present fields stay present: an absence test that passed by nulling
-    // everything would prove the opposite of what it claims.
-    assert_eq!(
-        odcl["upstream"]["repository"],
-        serde_json::json!("https://github.com/datacontract/datacontract-specification")
-    );
-    assert_eq!(odcl["upstream"]["pinned_ref"], serde_json::json!("1.2.1"));
-
-    // And in the terminal, the same three absences are words rather than gaps.
+    // everything would prove the opposite of what it claims. The values are
+    // not transcribed here — `specs.toml` is the one place they are written
+    // down — only that they are there, and that the terminal shows the same
+    // ones the envelope does.
     let output = conform(&["registry", "list", "--spec", "odcl"]);
     assert_eq!(output.code, 0);
+
+    for field in ["repository", "pinned_ref"] {
+        let recorded = odcl["upstream"][field]
+            .as_str()
+            .unwrap_or_else(|| panic!("`odcl`.{field} is recorded and must render as a string"));
+        assert!(!recorded.trim().is_empty());
+        assert!(
+            output.stdout.contains(recorded),
+            "the terminal does not show the `{field}` the envelope reports:\n{}",
+            output.stdout
+        );
+    }
+
+    // And in the terminal, the three absences are words rather than gaps.
     assert_eq!(
         output.stdout.matches("(not recorded)").count(),
         3,
