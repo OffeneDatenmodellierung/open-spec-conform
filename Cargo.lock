@@ -25,6 +25,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "conform-okf"
+version = "0.1.0"
+dependencies = [
+ "conform-core",
+ "conform-registry",
+ "okf-core",
+ "serde",
+]
+
+[[package]]
 name = "conform-registry"
 version = "0.1.0"
 dependencies = [
@@ -76,6 +86,12 @@ name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+
+[[package]]
+name = "okf-core"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fa8243d1e3b2bd983b972afbe328fea56155ccfb38264b44c19045e54f24be0"
 
 [[package]]
 name = "proc-macro2"
