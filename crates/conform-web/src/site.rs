@@ -198,12 +198,12 @@ const CRATES_DIR: &str = "crates";
 /// evidence behind it in full and for what wiring it up would take.
 const DEMO_NOT_WIRED: &str = "The validator compiles to WebAssembly and its C ABI works across \
      the boundary — both were built and run to check. Two things stand in the way, and neither \
-     is time. Its only constructor takes a registry *path*, and a browser has no filesystem to \
+     is time. Its only constructor takes a registry path, and a browser has no filesystem to \
      resolve one against; and on this target the crate's promise that no panic crosses the \
-     boundary is provably false, because `wasm32-unknown-unknown` aborts on panic and there is \
-     nothing for `catch_unwind` to catch. Shipping a validator whose panic net does not work, \
-     in the one crate built around the claim that it does, would be shipping a guarantee we \
-     know to be untrue.";
+     boundary is provably false, because wasm32-unknown-unknown aborts on panic and leaves \
+     nothing for catch_unwind to catch. Shipping a validator whose panic net does not work, in \
+     the one crate built around the claim that it does, would be shipping a guarantee we know \
+     to be untrue.";
 
 /// What was built and run to establish the above, and what each probe said.
 ///
@@ -233,8 +233,9 @@ const DEMO_EVIDENCE: &[(&str, &str)] = &[
     ),
     (
         "conform_self_test_panic()",
-        "traps with `unreachable` instead of returning a status code. This entry point exists \
-         to detect exactly that, and this is the first target on which it has fired",
+        "traps with an unreachable instruction instead of returning a status code. This \
+         entry point exists to detect exactly that, and this is the first target on which it \
+         has fired",
     ),
 ];
 

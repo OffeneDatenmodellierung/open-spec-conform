@@ -144,7 +144,7 @@ const WRITTEN_BY_THE_RENDERER: &[&str] = &[
     "html", "head", "meta", "title", "style", "body", "header", "h1", "h2", "h3", "h4", "p", "dl",
     "dt", "dd", "div", "nav", "ul", "li", "a", "main", "section", "table", "thead", "tbody", "tr",
     "th", "td", "code", "span", "br", "article", "details", "summary", "em", "strong", "pre",
-    "footer", "input", "label", "script",
+    "footer", "input", "label", "script", "colgroup", "col",
 ];
 
 #[test]
