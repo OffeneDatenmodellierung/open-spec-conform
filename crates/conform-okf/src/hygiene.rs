@@ -83,7 +83,7 @@ impl Validator for OkfHygiene {
             lint_draft(&mut cx, concept);
         }
 
-        cx.finish().into_iter().collect()
+        cx.finish()
     }
 }
 

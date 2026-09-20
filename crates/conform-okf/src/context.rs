@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use conform_core::{Diagnostic, DiagnosticCode, Location, Severity};
+use conform_core::{ConformanceReport, Diagnostic, DiagnosticCode, Location, Severity};
 use okf_core::Concept;
 
 use crate::spec_ref;
@@ -135,19 +135,20 @@ impl<'a> Cx<'a> {
         self.push(Severity::Info, code, section, message.into());
     }
 
-    /// Every diagnostic, errors first, then warnings, then info.
+    /// Everything collected, as a report in reading order: errors first, then
+    /// warnings, then info.
     ///
-    /// Sorted rather than relied upon: the traversal order is an
+    /// Sorted rather than relied upon — the traversal order above is an
     /// implementation detail, while this ordering is what a reader sees first
-    /// and what a CI log diff compares. The sort is stable, so within one
-    /// severity the bundle's own order survives.
-    pub(crate) fn finish(self) -> Vec<Diagnostic> {
-        let mut diagnostics = self.diagnostics;
-        diagnostics.sort_by_key(|d| match d.severity {
-            Severity::Error => 0u8,
-            Severity::Warning => 1,
-            Severity::Info => 2,
-        });
-        diagnostics
+    /// and what a CI log diff compares — but the ordering itself is
+    /// `conform-core`'s
+    /// [`sort_by_severity`](ConformanceReport::sort_by_severity), not a second
+    /// copy of the rule kept here. It is format-agnostic, so a copy in this
+    /// crate would only be one more thing to keep in step. Its sort is stable,
+    /// so within one severity the bundle's own order still survives.
+    pub(crate) fn finish(self) -> ConformanceReport {
+        let mut report: ConformanceReport = self.diagnostics.into_iter().collect();
+        report.sort_by_severity();
+        report
     }
 }
