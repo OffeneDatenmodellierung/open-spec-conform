@@ -118,6 +118,18 @@ pub enum Action {
         paths: Vec<PathBuf>,
     },
 
+    /// Open the interactive console.
+    ///
+    /// The same thing bare `conform` does. Named as well, so it can be asked
+    /// for explicitly in a script or a desktop entry.
+    Tui {
+        /// Files or directories to load into it. Optional: with none, the
+        /// console opens on the catalogue and what re-hashing the vendored
+        /// bytes just said.
+        #[arg(value_name = "PATH")]
+        paths: Vec<PathBuf>,
+    },
+
     /// The specification catalogue.
     Registry {
         /// Which question to ask of it.
@@ -144,7 +156,14 @@ impl Cli {
     #[must_use]
     pub fn request(&self) -> Option<Request> {
         let (command, paths) = match self.command.as_ref()? {
-            Action::Validate { paths } => (Command::Validate, paths.clone()),
+            // The console shows what the non-interactive commands show, so it
+            // asks the engine the same question — which is what keeps it a
+            // view. With no paths there is nothing to validate, and the
+            // catalogue's own integrity is the useful thing to open on.
+            Action::Tui { paths } if paths.is_empty() => (Command::RegistryVerify, Vec::new()),
+            Action::Validate { paths } | Action::Tui { paths } => {
+                (Command::Validate, paths.clone())
+            }
             Action::Registry { question } => (
                 match question {
                     RegistryAction::List => Command::RegistryList,
@@ -161,6 +180,19 @@ impl Cli {
             policy: self.common.policy(),
             registry: self.common.registry.clone(),
         })
+    }
+}
+
+impl Cli {
+    /// Whether this invocation opens the console.
+    ///
+    /// Bare `conform` does, because a console is what a person at a terminal
+    /// with no arguments almost certainly wanted. Every other form is
+    /// non-interactive, so nothing in a script can ever find itself waiting
+    /// for a keystroke.
+    #[must_use]
+    pub const fn is_interactive(&self) -> bool {
+        matches!(self.command, None | Some(Action::Tui { .. }))
     }
 }
 

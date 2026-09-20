@@ -51,6 +51,7 @@ pub mod escape;
 pub mod human;
 pub mod json;
 pub mod model;
+pub mod tui;
 
 use std::ffi::OsString;
 use std::io::Write;
@@ -96,15 +97,30 @@ where
         }
     };
 
-    let Some(request) = cli.request() else {
-        // No subcommand. Until the TUI lands this prints the help rather than
-        // guessing at an action, because guessing at an action is how a tool
-        // walks a directory nobody asked it to walk.
-        let _ = write!(out, "{}", Cli::command_help());
-        return 0;
-    };
+    // Bare `conform`, with nothing else to go on, means the console.
+    let request = cli.request().unwrap_or_else(|| engine::Request {
+        command: model::Command::RegistryVerify,
+        paths: Vec::new(),
+        spec: cli.common.spec.clone(),
+        policy: cli.common.policy(),
+        registry: cli.common.registry.clone(),
+    });
 
     let run = engine::run(&request);
+
+    // The console and `--json` are mutually exclusive by construction: one is
+    // a terminal and the other is a pipe, and asking for both is asking for
+    // the envelope.
+    if cli.is_interactive() && !cli.common.json {
+        return match tui::run(run, cli.common.spec.as_deref()) {
+            Ok(()) => 0,
+            Err(error) => {
+                let _ = writeln!(err, "conform: the console could not start: {error}");
+                EXIT_UNUSABLE
+            }
+        };
+    }
+
     let rendered = if cli.common.json {
         json::render(&run, out)
     } else {
@@ -116,12 +132,4 @@ where
         return EXIT_UNUSABLE;
     }
     run.exit_code()
-}
-
-impl Cli {
-    /// The help text, as `--help` would print it.
-    fn command_help() -> String {
-        use clap::CommandFactory as _;
-        Self::command().render_help().to_string()
-    }
 }

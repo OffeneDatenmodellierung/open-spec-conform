@@ -75,5 +75,14 @@ crossterm = "0.29"
 # by string-matching would pass for the wrong reasons. Already in the graph.
 serde_json = "1"
 
+# `ratatui::backend::TestBackend` renders the console into an in-memory buffer,
+# which is what makes the TUI's share of the escaping obligation testable
+# rather than merely claimed. Already in the graph.
+ratatui = "0.30"
+
+# The console tests assert against `conform-core`'s own types — a `GatePolicy`
+# to build a request with, and a `Severity` to read back.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
 [lints]
 workspace = true

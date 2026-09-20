@@ -1,10 +1,12 @@
 # conform-cli
 
-The `conform` console: the commands for navigating and verifying the
+The `conform` console: a terminal UI for navigating and verifying the
 specifications this repository conforms to, and a versioned JSON report for
 everything that is not a terminal.
 
 ```
+conform                          # the console: specs → documents → diagnostic detail
+conform tui <path>…              # …the same, loaded with documents
 conform validate <path>…         # check documents; report everything; exit 0
 conform validate <path> --check  # …and gate on errors, so CI can fail
 conform registry list            # the catalogue, with upstream provenance
@@ -46,14 +48,16 @@ green on a tool that never ran.
 ```
                 ┌─ human ──► stdout, terminal-escaped
  Request ─► Run ├─ json  ──► stdout, JSON-encoded, NOT terminal-escaped
-                └─ tui   ──► a terminal, terminal-escaped  (not yet built)
+                └─ tui   ──► a terminal, terminal-escaped
 ```
 
-The engine does the work once and produces a `Run`. Every renderer reads it and
-nothing else: none validates a document, none recounts a diagnostic, none
-decides whether the run gates. The TUI is next, and it will be a *view* in the
-strict sense rather than a second implementation of the same idea, because
-there is nothing left for it to re-derive. Meanwhile,
+The engine does the work once, *before* the terminal is touched, and produces a
+`Run`. All three renderers read it and nothing else: none validates a document,
+none recounts a diagnostic, none decides whether the run gates. So the console
+is a *view* in the strict sense rather than a second implementation of the same
+idea — it cannot tell an operator a contract is conformant while `--json` says
+it is not, and a rule added to an adapter appears in all three at once without
+anybody remembering to add it to the console. And
 `tests/json_changes_serialisation_only.rs` holds the human and JSON renderings
 to the same diagnostics and the same exit code across the whole fixture corpus,
 every gate policy and both registry commands.
@@ -83,7 +87,8 @@ every pass — so it has to happen exactly once, at the point of display.
 
 **This crate is that point.** A hostile document can carry `ESC [ … m`, an OSC
 window-title sequence, a U+202E right-to-left override or a zero-width run into
-a diagnostic message or into a path. On the way to a terminal, each becomes a visible `<U+XXXX>`; nothing is
+a diagnostic message or into a path. On the way to a terminal — the human
+report and the console alike — each becomes a visible `<U+XXXX>`; nothing is
 deleted, because an operator shown a *different* string from the one the
 document held cannot act on the finding.
 
@@ -117,11 +122,50 @@ a file everybody believes was checked.
 no validator in this binary. `--spec odcl` refuses under `CLI005` and exits 2
 rather than reporting a clean run over zero documents.
 
-## Not yet here
+## The console
 
-The TUI (`conform tui`, and bare `conform`). Three panes — specs → documents
-and their diagnostics → diagnostic detail — driven entirely from the keyboard,
-with the upstream link, the pin and the drift status for the selected
-specification always on screen. `ratatui` and `crossterm` are already in the
-manifest and in the `cargo deny` graph; the view itself is not written. Bare
-`conform` prints the help until it is.
+Three panes — the catalogue, what was examined against the selected
+specification, and one finding in full.
+
+```
+┌─ ▸ Specs ─────────┬─ Documents ──────────┬─ Diagnostic ──────────────────┐
+│ ▸ ✓ odcs  3.1.0 ✗ │ ✗ contracts/orders…  │ ✗ error  ODCS101              │
+│   ✓ odps  1.0.0 ⚠ │     ✗ error   ODCS101│                               │
+│   ✓ odcl  1.2.1 · │     ⚠ warning ODCS201│ "servers" is a required       │
+│   ✓ cads  1.0   · │ ✓ contracts/users.y… │ property                      │
+│   ✓ okf   0.2   ⚠ │                      │                               │
+├─ Upstream  [u] ───┤                      │ document   contracts/orders…  │
+│ pinned   v3.1.0   │                      │ pointer    /servers           │
+│ bytes    ✓ matched│                      │ spec       odcs@3.1.0         │
+│ steward  Bitol    │                      │                               │
+│ licence  (not rec…│                      │ ▸ bitol-io.github.io/…        │
+│ ▸ bitol-io.github…│                      │                               │
+└───────────────────┴──────────────────────┴───────────────────────────────┘
+ [tab] pane  [↑ ↓] move  [u] upstream  [?] keys  [q] quit
+```
+
+**The upstream link is never more than two keystrokes away.** In practice it is
+zero: the link, the pin and the drift status for whatever is selected are
+always on screen, in the pane under the catalogue and again at the foot of the
+detail pane. `u` opens the full record — every provenance field, the digest,
+the fetch date, the registry's gap list, and the `notes` where the evidence for
+each field and the reason for each absence is written down. The notes run to
+more than a screenful, so the overlay scrolls.
+
+**Keyboard only.** There is no mouse handling anywhere, deliberately: a
+terminal tool that needs a mouse cannot be used over `ssh` on a bad link, from
+a text console, or by somebody driving a screen reader. `tab` and the arrows
+move between panes, `↑ ↓` (or `j k`) within one, `pgup`/`pgdn` ten rows,
+`g`/`G` to the ends, `esc` closes an overlay, `q` or `ctrl-c` quits.
+
+**No colour-only encoding.** Severity is a glyph *and* a word; drift status is
+a glyph *and* a word. Colour is added on top for the people it helps and
+carries nothing on its own, so the console reads the same on a monochrome
+terminal or through a screen reader.
+
+The console is tested against `ratatui`'s `TestBackend`, which renders into an
+in-memory buffer — so `tests/the_console_is_a_view.rs` reads the real cells the
+real widgets produced. It asserts that a hostile document reaches no pane
+unescaped, that every catalogued specification is reachable and carries its
+link, that navigation needs no mouse, and — in both directions — that the set
+of diagnostics reachable in the console is exactly the set the run holds.
