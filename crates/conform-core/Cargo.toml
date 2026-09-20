@@ -1,0 +1,36 @@
+[package]
+name = "conform-core"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011).
+version = "0.1.0"
+
+description = "Format-agnostic conformance harness: diagnostics, severities, reports, gating and three-way reference resolution."
+readme = "README.md"
+keywords = ["conformance", "diagnostics", "validation", "linting"]
+categories = ["development-tools", "development-tools::testing"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[features]
+default = []
+# Serialization only. Enabling this feature MUST NOT change which diagnostics
+# are produced or whether a report gates (spec FR-007).
+serde = ["dep:serde"]
+
+[dependencies]
+# The ONLY dependency this crate may ever carry, and only behind an
+# off-by-default feature (spec NFR-001): this crate sits at the bottom of every
+# consumer's dependency tree, so the default build has zero non-std deps.
+serde = { version = "1", default-features = false, features = ["std", "derive"], optional = true }
+
+[lints]
+workspace = true
