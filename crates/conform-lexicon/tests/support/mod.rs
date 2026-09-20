@@ -80,10 +80,7 @@ pub fn errors(report: &ConformanceReport) -> Vec<String> {
 
 /// Every diagnostic code in a report, in the order produced.
 pub fn codes_in(report: &ConformanceReport) -> Vec<String> {
-    report
-        .iter()
-        .map(|d| d.code.as_str().to_owned())
-        .collect()
+    report.iter().map(|d| d.code.as_str().to_owned()).collect()
 }
 
 /// How many diagnostics in a report carry this code.

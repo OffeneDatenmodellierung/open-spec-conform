@@ -40,11 +40,25 @@ use serde_json::Value;
 /// `"model.nested_field.field"` — the schema's own second example — resolves
 /// through a nested object field.
 ///
-/// A reference with no `.` in it names no model, and this crate does not
-/// invent one: that is
-/// [`NotInspectedReason::Unsupported`](conform_core::NotInspectedReason::Unsupported),
-/// because the honest statement is that nothing was followed, not that a
-/// target is absent.
+/// # What is deliberately *not* followed
+///
+/// Two cases return
+/// [`NotInspected`](conform_core::Resolution::NotInspected) rather than an
+/// answer, and both are the same judgement: the specification does not say
+/// what the reference means, so this crate does not decide on its behalf.
+///
+/// - A reference with **no `.`** in it names no model. Nothing was followed.
+/// - A segment that does not match any key of the field's `fields`, on a
+///   field that carries `items`, `keys` or `values` instead. Those hold a
+///   nested `Field` each — an array's element, a map's key and value — and the
+///   specification documents `references` only as `model.field` and
+///   `model.nested_field.field`. It publishes no spelling for "the `sku` of
+///   the objects in this array", so there is no path here to follow and
+///   guessing one would invent a rule upstream has not written.
+///
+/// Reporting either as `DoesNotExist` would be a false alarm about a target
+/// that may very well be there, which is the failure this whole type exists to
+/// prevent.
 ///
 /// ```
 /// use conform_core::Resolution;
@@ -59,6 +73,18 @@ use serde_json::Value;
 ///
 /// // Not a model-qualified reference at all. Nobody looked, and it says so.
 /// assert!(resolve_field_reference(&document, "order_id").is_not_inspected());
+///
+/// // An array's element fields. The specification publishes no spelling for
+/// // these, so this is "not followed", never "not there".
+/// let nested: serde_json::Value = serde_json::json!({
+///     "models": { "orders": { "fields": { "lines": {
+///         "type": "array",
+///         "items": { "fields": { "sku": { "type": "string" } } }
+///     } } } }
+/// });
+/// let through_an_array = resolve_field_reference(&nested, "orders.lines.sku");
+/// assert!(through_an_array.is_not_inspected());
+/// assert!(!through_an_array.does_not_exist());
 /// ```
 #[must_use]
 pub fn resolve_field_reference(document: &Value, raw: &str) -> Resolution<Pointer> {
@@ -80,6 +106,16 @@ pub fn resolve_field_reference(document: &Value, raw: &str) -> Resolution<Pointe
             return Resolution::not_inspected(NotInspectedReason::Unsupported);
         }
         let Some(next) = node.get("fields").and_then(|f| f.get(field)) else {
+            // Nothing under `fields` — but if this field's contents live in an
+            // `items`, `keys` or `values` instead, the target may exist under
+            // a spelling the specification has never published. Absent is a
+            // claim this crate is not entitled to make there.
+            if ["items", "keys", "values"]
+                .iter()
+                .any(|nested| node.get(*nested).is_some())
+            {
+                return Resolution::not_inspected(NotInspectedReason::Unsupported);
+            }
             return Resolution::DoesNotExist;
         };
         pointer.push_str("/fields/");

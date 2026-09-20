@@ -3,7 +3,7 @@
     {
       "detail": null,
       "fixture": "conformant-dangling-references.yaml",
-      "sha256": "fa90f18af9843828effcf05dfb6b08b75d22f4d2e78fa65744dea5280baf1dd4",
+      "sha256": "aca8baf2ace5fa337a63f95fd707443e37ecc568ccea836f6a34350be0e9711d",
       "verdict": "ok"
     },
     {
