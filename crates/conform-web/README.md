@@ -29,10 +29,19 @@ Two tests hold the claim up, and neither can pass vacuously:
 | `the_page_is_a_function_of_the_registry.rs` | a fact obtained by any route at all | renders from a registry of **fabricated** values and requires the fabricated ones to appear and the real ones not to; the control asserts the *real* page does contain the real facts, so the leak check cannot be comparing against facts that reach no page |
 | `no_spec_facts_are_written_in_the_source.rs` | a literal in a comment, a stylesheet or a fixture | plants a real registry URL in a string and requires the scanner to find it, and requires it to stay silent on text that has none |
 
-Neither subsumes the other. The scan sees a literal the substitution test would
-not; the substitution test sees a fact obtained however cleverly, which the scan
-would not. The scan found one on its first run — a real specification name used
-as a sample string in `escape.rs` — and the sample was changed rather than the
+Neither subsumes the other, and that is **measured rather than asserted**. Two
+mutations were planted in `render.rs` and the tests run against each:
+
+| Planted defect | Source scan | Substitution test |
+|---|---|---|
+| a real upstream URL written as a literal fallback in `upstream_cell` | **caught** — named the file, the entry and the field | missed: the fallback never fires under the fabricated registry, where every entry records a repository |
+| the renderer reads the real `specs.toml` itself, behind the registry it was handed | missed: there is no literal to find | **caught** — `spec[0] (odcs) leaked "https://bitol-io.github.io/…"` |
+
+One catches what the other cannot, in both directions. Each mutation was
+reverted; `git diff` is clean.
+
+The scan also found a real one on its first run — a specification name used as
+a sample string in `escape.rs` — and the sample was changed rather than the
 rule.
 
 ## Absence is rendered as absence
