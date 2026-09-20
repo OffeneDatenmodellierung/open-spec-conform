@@ -734,12 +734,16 @@ for, and one that does test the layer being migrated. The pre-migration
 `okf::conform` was compiled standalone — verbatim apart from its two `super::`
 couplings, one of which is a two-line loader — and both implementations were
 run over the same bytes and diffed finding by finding: severity, rule,
-document, message and order. They agree on all 44 findings over the two
-upstream bundles, and on all 59 over two synthetic bundles built to reach the
-error paths the published corpus never takes (unparseable document, circular
-derivation, stale index listing, unimplemented `okf_version`, duplicate titles,
-malformed trust events). 29 of the 48 codes are exercised. Those measured
-values are what `upstream_bundles_are_checked_the_same_way` pins.
+document, message and order. Eight runs, and they agree on every finding in
+all eight: 44 across the two upstream bundles, and 68 across two states of a
+synthetic bundle built to reach the error paths the published corpus never
+takes (unparseable document, circular derivation, stale index listing,
+unimplemented `okf_version`, duplicate titles, malformed trust events,
+incomplete attested computation). 31 of the crate's 50 codes are exercised
+that way. The upstream half of those measured values is what
+`upstream_bundles_are_checked_the_same_way` pins; the synthetic bundles were a
+development instrument and are not committed, which is the weaker part of this
+and is stated rather than glossed.
 
 **The fixture half of §1.4's claim stands unchanged.** The vendored corpus
 *is* the best oracle material in this estate, and it is now pinned in
