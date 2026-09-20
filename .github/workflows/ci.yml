@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Default features first, and on its own. This is the build every
+      # consumer gets by default, and the one that must have zero non-std
+      # dependencies; running it separately means a regression there cannot be
+      # masked by the all-features run that follows.
+      - name: cargo test (default features)
+        run: cargo test --workspace
+
+      - name: cargo test (all features)
+        run: cargo test --workspace --all-features
+
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-deny
+
+      # Whole workspace, with every feature activated: anything reachable only
+      # through an optional feature is otherwise invisible to both the licence
+      # and the advisory gate.
+      - name: cargo deny (workspace)
+        run: cargo deny --all-features check
+
+      # conform-core alone, as its own graph root. Everything in this family
+      # sits on top of this crate, so its dependency tree is everybody's — and
+      # a workspace-wide run would happily stay green while a heavy dependency
+      # added to a sibling (the FFI crate being the obvious future risk) crept
+      # into the harness's own tree unnoticed.
+      #
+      # Pointing --manifest-path at a workspace member makes that crate the
+      # sole root of the graph, which is exactly the isolation wanted here.
+      - name: cargo deny (conform-core in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-core/Cargo.toml check
