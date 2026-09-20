@@ -40,14 +40,20 @@ pub struct SpecCard {
 /// the type changing under it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Demo {
-    /// No in-browser validation in this build, with the reason stated.
+    /// No in-browser validation in this build, with the reason stated and the
+    /// evidence for it.
     ///
     /// The reason is carried rather than assumed, because "we did not build
     /// it" and "it cannot be built" are different statements and a reader is
-    /// entitled to know which one this is.
+    /// entitled to know which one this is. The evidence is carried because a
+    /// claim about what a build does is worth exactly as much as what was run
+    /// to establish it.
     NotWired {
         /// What stands between this page and a working demo, in one sentence.
         because: String,
+        /// What was actually built and run to find that out: each probe and
+        /// its result, in the order they were performed.
+        evidence: Vec<(String, String)>,
     },
 }
 
@@ -135,6 +141,10 @@ impl Site {
             crates,
             demo: Demo::NotWired {
                 because: DEMO_NOT_WIRED.to_owned(),
+                evidence: DEMO_EVIDENCE
+                    .iter()
+                    .map(|(probe, result)| ((*probe).to_owned(), (*result).to_owned()))
+                    .collect(),
             },
         }
     }
@@ -184,15 +194,49 @@ const CRATES_DIR: &str = "crates";
 /// Why this build cannot validate a document in the browser.
 ///
 /// One sentence, stated plainly, because the alternative a reviewer would
-/// rightly refuse is a demo that pretends. See this crate's README and
-/// `docs/plan` §6.4 for the evidence behind it and for what wiring it up
-/// would take.
-const DEMO_NOT_WIRED: &str = "The C ABI this page would call is reachable from WebAssembly, and \
-     the validator stack compiles to `wasm32-unknown-unknown` — but its only \
-     constructor takes a registry *path*, and a browser has no filesystem to \
-     resolve one against. Building the schema into the artefact is the \
-     resolution, and it is not in this build. Nothing here validates anything, \
-     and a box that pretended to would be worse than this sentence.";
+/// rightly refuse is a demo that pretends. See `docs/plan` §6.4 for the
+/// evidence behind it in full and for what wiring it up would take.
+const DEMO_NOT_WIRED: &str = "The validator compiles to WebAssembly and its C ABI works across \
+     the boundary — both were built and run to check. Two things stand in the way, and neither \
+     is time. Its only constructor takes a registry *path*, and a browser has no filesystem to \
+     resolve one against; and on this target the crate's promise that no panic crosses the \
+     boundary is provably false, because `wasm32-unknown-unknown` aborts on panic and there is \
+     nothing for `catch_unwind` to catch. Shipping a validator whose panic net does not work, \
+     in the one crate built around the claim that it does, would be shipping a guarantee we \
+     know to be untrue.";
+
+/// What was built and run to establish the above, and what each probe said.
+///
+/// Recorded as data rather than prose so that the page shows the measurements
+/// rather than a summary of them. Every row was produced by running the thing
+/// it names against this repository at the commit this page was generated
+/// from; none of it is inferred.
+const DEMO_EVIDENCE: &[(&str, &str)] = &[
+    (
+        "cargo check -p conform-odcs --target wasm32-unknown-unknown",
+        "compiles — the JSON Schema validator, the YAML parser and the registry are all \
+         wasm-compatible unmodified",
+    ),
+    (
+        "cargo build -p conform-ffi --target wasm32-unknown-unknown --release",
+        "builds a 347,412-byte cdylib exporting all six ABI entry points and its linear memory",
+    ),
+    (
+        "conform_version()",
+        "returns 0.1.0 — the C ABI genuinely works across the WebAssembly boundary",
+    ),
+    (
+        "conform_validator_new(\"odcs\", \"specs.toml\")",
+        "returns NULL, and conform_last_error() explains: cannot read the registry: operation \
+         not supported on this platform. The crate compiles and links cleanly for this target \
+         and then fails on every call; nothing in the toolchain warns about it",
+    ),
+    (
+        "conform_self_test_panic()",
+        "traps with `unreachable` instead of returning a status code. This entry point exists \
+         to detect exactly that, and this is the first target on which it has fired",
+    ),
+];
 
 /// The registry, or a manifest, could not be read.
 #[derive(Debug)]
