@@ -1,0 +1,78 @@
+[package]
+name = "conform-web"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, FR-011). This crate is the odd
+# one out in that it is not published to crates.io at all — it is deployed as
+# static assets — but it carries a literal version for the same mechanical
+# reason every sibling does: there is no workspace version key to inherit, and
+# `version.workspace = true` here would simply fail to build.
+version = "0.1.0"
+
+description = "The Open Spec Conform site: the tool, the crate family, and the specification catalogue with its canonical upstream links, generated from `specs.toml`."
+readme = "README.md"
+keywords = ["conformance", "provenance", "registry", "documentation", "site"]
+categories = ["development-tools", "web-programming"]
+
+# Not published. The artefact this crate produces is an HTML file; the crate
+# itself is a build tool for this repository and nothing else consumes it.
+publish = false
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[[bin]]
+name = "conform-web"
+path = "src/main.rs"
+
+[dependencies]
+# The catalogue, and the live re-hash of every vendored artefact. This crate's
+# entire reason for existing is to put what this registry records in front of a
+# human, so it reads the registry directly rather than a transcription of it.
+conform-registry = { path = "../conform-registry", version = "0.1.0" }
+
+# The view vocabulary, reused rather than re-invented.
+#
+# `conform_cli::model::SpecSummary` already answers, for one registry entry,
+# exactly the questions this page asks: which provenance fields are present,
+# which are absent, what re-hashing the bytes said, which upstream link is the
+# best one, and whether this family has a validator for the entry. The console
+# renders those facts as text and this crate renders them as HTML, and the one
+# thing that must not happen is the two disagreeing about what "absent" means
+# or calling the same state by two different names.
+#
+# Taking the dependency makes that structural instead of aspirational. It costs
+# nothing in the dependency graph — `conform-cli` is already in this
+# workspace's tree and adds no crate to it that is not already there — and it
+# buys a guarantee that no amount of care in a second implementation would.
+conform-cli = { path = "../conform-cli", version = "0.1.0" }
+
+# The crate table on the page is read from `crates/*/Cargo.toml` rather than
+# transcribed, so a crate that is added, renamed or released cannot leave a
+# stale row behind. `default-features = false` drops the serializer: this crate
+# reads manifests and never writes one. Already in the graph via
+# `conform-registry`.
+toml = { version = "1", default-features = false, features = ["parse", "serde"] }
+
+# Deriving `Deserialize` for the two manifest keys this crate reads, for the
+# reason `conform-registry` gives for doing the same: it keeps the reader a
+# description of the file format rather than a hand-written walk over a
+# document tree. Already in the graph.
+serde = { version = "1", default-features = false, features = ["std", "derive"] }
+
+[dev-dependencies]
+# `tests/the_page_is_a_function_of_the_registry.rs` builds a registry whose
+# every value is fabricated and renders the page from it, which is how the
+# "nothing is hand-typed" claim is proved rather than asserted. That needs the
+# registry's own types. Already in the graph.
+conform-registry = { path = "../conform-registry", version = "0.1.0" }
+
+[lints]
+workspace = true

@@ -22,3 +22,8 @@ Cargo.lock.bak
 # header-drift test without anybody having changed an ABI.
 /tools/headergen/target
 /tools/sanitise/build
+
+# The generated site. `website/build.sh` rebuilds it from `specs.toml` and the
+# member manifests, so committing it would be committing a second copy of the
+# registry — exactly what this crate exists to avoid.
+/website/dist
