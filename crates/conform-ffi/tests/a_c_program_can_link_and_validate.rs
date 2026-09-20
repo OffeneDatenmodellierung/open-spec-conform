@@ -34,15 +34,24 @@
 //!
 //! ```text
 //! cargo rustc -p conform-ffi --lib --crate-type staticlib \
-//!     --message-format=json-render-diagnostics -- --print native-static-libs
+//!     --message-format=json --color=never -- --print native-static-libs
 //! ```
 //!
-//! which answers both questions at once — the `compiler-artifact` record on
-//! stdout carries the exact path, and the `native-static-libs` note on stderr
-//! carries the system libraries a Rust `staticlib` has to be linked against on
+//! which answers both questions at once, on stdout, as two structured records
+//! — the `compiler-artifact` giving the exact path and the `compiler-message`
+//! giving the system libraries a Rust `staticlib` has to be linked against on
 //! this platform. Neither is guessed. Hard-coding `libconform_ffi.a` and a
 //! per-OS list of `-lpthread -ldl -lm` would be two more things that are right
 //! only on the machine they were written on.
+//!
+//! `--message-format=json` rather than `json-render-diagnostics`, and that is
+//! not a detail. The `-render-diagnostics` variant keeps *no* structured copy
+//! of that note: it renders it to stderr and nothing else, which is what used
+//! to force this test to scrape human-readable text — and on CI, where
+//! `CARGO_TERM_COLOR: always` is set, the text it scraped had an ANSI reset in
+//! it, which went straight to the linker. See
+//! `tests/support/cargo_output.rs` for the full account and for the guard
+//! that now stands behind the structured route regardless.
 //!
 //! Nesting cargo inside `cargo test` is safe here: by the time a test binary
 //! runs, the outer invocation has finished building and released the build
@@ -85,6 +94,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod support;
+
+use support::cargo_output::{self, Linkage};
+
 /// The workspace root — the directory `specs.toml` lives in.
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -105,16 +118,6 @@ fn compiler() -> String {
     std::env::var("CC").unwrap_or_else(|_| "cc".to_owned())
 }
 
-/// What it takes to link a C program against this library.
-#[derive(Debug)]
-struct Linkage {
-    /// The static library cargo just built.
-    archive: PathBuf,
-    /// The system libraries rustc says a `staticlib` needs alongside it, in
-    /// the order it gave them — which it warns can matter.
-    native: Vec<String>,
-}
-
 /// Build the library, and find out from cargo both where it is and what else
 /// it needs.
 fn build() -> Linkage {
@@ -126,79 +129,39 @@ fn build() -> Linkage {
             "--lib",
             "--crate-type",
             "staticlib",
-            "--message-format=json-render-diagnostics",
+            "--message-format=json",
+            // Belt and braces with the structured route above. Nothing read
+            // below comes from a rendered string any more, so colour cannot
+            // reach a linker argument even if this were left on — but an
+            // inherited `CARGO_TERM_COLOR=always` has already cost this
+            // repository one red CI run, and turning it off at the call site
+            // costs nothing. Both the flag and the variable, because the flag
+            // covers cargo and the variable covers anything cargo spawns.
+            "--color=never",
             "--",
             "--print",
             "native-static-libs",
         ])
+        .env("CARGO_TERM_COLOR", "never")
         .current_dir(workspace_root())
         .output()
         .expect("cargo should be runnable from a cargo test");
 
     let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+
+    // `--message-format=json` stops cargo rendering diagnostics to stderr, so
+    // a build failure arrives as JSON. Rendering it here is the one use this
+    // test makes of a `rendered` field: to show a human what went wrong, never
+    // to take a value out of.
     assert!(
         run.status.success(),
-        "cargo could not build the static library.\n--- stdout\n{stdout}\n--- stderr\n{stderr}",
+        "cargo could not build the static library.\n--- diagnostics\n{}\n--- stderr\n{stderr}",
+        cargo_output::rendered_diagnostics(&stdout),
     );
 
-    Linkage {
-        archive: archive_from(&stdout).unwrap_or_else(|| {
-            panic!("cargo reported no `staticlib` artefact for conform-ffi.\n{stdout}")
-        }),
-        native: native_from(&stderr)
-            .unwrap_or_else(|| panic!("rustc printed no `native-static-libs` note.\n{stderr}")),
-    }
-}
-
-/// The `staticlib` path, out of cargo's JSON message stream.
-fn archive_from(stdout: &str) -> Option<PathBuf> {
-    for line in stdout.lines() {
-        let Ok(message) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
-        if message["reason"] != "compiler-artifact" || message["target"]["name"] != "conform_ffi" {
-            continue;
-        }
-        let is_staticlib = message["target"]["kind"]
-            .as_array()
-            .is_some_and(|kinds| kinds.iter().any(|kind| kind == "staticlib"));
-        if !is_staticlib {
-            continue;
-        }
-        // By extension rather than by position in the list: a `staticlib`
-        // artefact record also carries the `.d` depfile, and on Windows the
-        // archive is `.lib` rather than `.a`.
-        let found = message["filenames"]
-            .as_array()?
-            .iter()
-            .filter_map(serde_json::Value::as_str)
-            .find(|name| {
-                Path::new(name).extension().is_some_and(|extension| {
-                    extension.eq_ignore_ascii_case("a") || extension.eq_ignore_ascii_case("lib")
-                })
-            })?;
-        return Some(PathBuf::from(found));
-    }
-    None
-}
-
-/// The system libraries, out of rustc's `--print native-static-libs` note.
-///
-/// The note is a single line of the form `note: native-static-libs: -lfoo
-/// -lbar`, and the line above it says the order and any duplication can be
-/// significant — so it is passed through as given rather than sorted,
-/// de-duplicated or otherwise tidied.
-fn native_from(stderr: &str) -> Option<Vec<String>> {
-    const MARKER: &str = "native-static-libs:";
-    stderr.lines().find_map(|line| {
-        let (_, libraries) = line.split_once(MARKER)?;
-        Some(
-            libraries
-                .split_whitespace()
-                .map(ToOwned::to_owned)
-                .collect(),
-        )
+    cargo_output::linkage(&stdout).unwrap_or_else(|problem| {
+        panic!("cargo's message stream could not be read: {problem}\n--- stdout\n{stdout}")
     })
 }
 
@@ -211,6 +174,17 @@ fn a_c_program_links_the_library_and_validates_a_document() {
         "cargo named {} and did not produce it",
         linkage.archive.display()
     );
+
+    // Belt, braces, and a third thing. `cargo_output` refuses an unsafe token
+    // before it gets here, but this is the last moment before the flags become
+    // a command line, and the cost of saying so again is nothing.
+    for flag in &linkage.native {
+        assert!(
+            cargo_output::is_safe_token(flag),
+            "a library flag reached the command line unchecked: `{}`",
+            cargo_output::show(flag)
+        );
+    }
 
     let out_dir = linkage
         .archive

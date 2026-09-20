@@ -19,6 +19,11 @@
               is one of the library's documented pointer contracts"
 )]
 
+// Reading cargo's own output, which is another program's text and is treated
+// as such. Its own module because it has nothing to do with the C ABI and
+// everything to do with not handing an ANSI escape to a linker.
+pub mod cargo_output;
+
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
