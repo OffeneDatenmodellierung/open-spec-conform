@@ -21,10 +21,10 @@
 //!
 //! # What it does not do
 //!
-//! It is not a sanitiser run. ASan and valgrind are driven from
-//! `tools/asan/run.sh` and from CI, because instrumenting this requires
-//! rebuilding the Rust side with different flags and that is a script's job,
-//! not a `#[test]`'s. See that script and `docs/plan` for what runs where.
+//! It is not a sanitiser run. Address-sanitising this means rebuilding the
+//! Rust side with different flags and relinking, which is a script's job and
+//! not a `#[test]`'s; see `tools/sanitise/README.md` for what runs where, and
+//! for what could and could not be run on the machine this was written on.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

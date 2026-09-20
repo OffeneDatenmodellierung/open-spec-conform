@@ -191,11 +191,6 @@ fn a_poisoned_handle_is_reported_as_already_freed() {
 }
 
 #[test]
-#[expect(
-    clippy::cast_ptr_alignment,
-    reason = "producing a misaligned handle is the point of this test; the \
-              library must reject it rather than read through it"
-)]
 fn a_misaligned_handle_is_refused_before_anything_reads_through_it() {
     let mut buffer = Buffer::zeroed();
     // One byte into an aligned buffer, which cannot be a `ConformValidator`

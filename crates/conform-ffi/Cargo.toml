@@ -36,17 +36,18 @@ default = []
 
 # Regenerating `include/conform.h` and comparing it to the committed copy.
 #
-# `cbindgen` is a compiler front end with a `syn` tree behind it; nobody
-# building this library to link against should have to compile that. It is
-# therefore an *optional* dependency rather than a dev-dependency: cargo builds
-# every dev-dependency of every workspace member whenever a test target is
-# built, so a dev-dependency here would land in a plain `cargo test
-# --workspace` for the whole repository. An optional dependency does not.
+# A marker feature with no dependencies. `cbindgen` is deliberately NOT a
+# dependency of this crate — it is MPL-2.0 and `deny.toml` allows permissive
+# licences only, and that finding is correct rather than something to except:
+# the plan is explicit (§5.3, risk R4) that `cbindgen` must not appear in this
+# workspace's tree. The generator therefore lives in `tools/headergen`,
+# outside the workspace, exactly as `tools/oracle` does; the test shells out
+# to it.
 #
-# The cost of the workaround is honest and small: with this feature on,
-# `cbindgen` is linkable from the library as well as from the test. Nothing in
-# `src/` references it, so it is dropped at link time.
-header-check = ["dep:cbindgen"]
+# What the feature gates is that shelling-out, which compiles `cbindgen` the
+# first time and wants a network to do it. Neither belongs in a plain
+# `cargo test --workspace`.
+header-check = []
 
 # Compiling and running `tests/smoke/conform_smoke.c` against the built
 # library. A marker feature with no dependencies: what it gates is the
@@ -81,11 +82,6 @@ conform-odps = { path = "../conform-odps", version = "0.1.0" }
 # at zero, which is NFR-001.
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# Only under `--features header-check`; see the feature's comment above.
-# `default-features = false` drops the `clap`-backed command line, which is the
-# half of `cbindgen` that is a binary rather than a library.
-cbindgen = { version = "0.29", default-features = false, optional = true }
 
 [dev-dependencies]
 # The tests read the boundary's JSON back rather than string-matching it, for

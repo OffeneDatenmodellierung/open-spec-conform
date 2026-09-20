@@ -25,8 +25,7 @@
 /// The outcome of a call across the boundary.
 ///
 /// `0` is success. Every other value is a failure of the call itself, and
-/// leaves a human-readable explanation in
-/// [`conform_last_error`](crate::abi::conform_last_error).
+/// leaves a human-readable explanation in `conform_last_error`.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ConformStatus {
@@ -39,7 +38,8 @@ pub enum ConformStatus {
 
     /// A handle was not one: it failed the guard word every validator carries.
     ///
-    /// See [`crate::abi`] for precisely what this can and cannot catch.
+    /// The guard catches null, misaligned, zeroed or freed handles. It cannot
+    /// catch a pointer into memory the process has not mapped; nothing can.
     InvalidHandle = 2,
 
     /// A string argument was not valid UTF-8, or a C string was not

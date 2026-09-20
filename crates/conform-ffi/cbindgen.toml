@@ -42,6 +42,11 @@ header = """
 
 autogen_warning = ""
 
+# `size_t`, not `uintptr_t`. They are the same width everywhere this will
+# plausibly run, but a length is a `size_t` in every C API a caller already
+# knows, and the header should read like one of those.
+usize_is_size_t = true
+
 [parse]
 # Only this crate. The adapters underneath it expose no C ABI and parsing them
 # would put their private type names into a header nobody can use them from.
@@ -49,6 +54,13 @@ parse_deps = false
 
 [export]
 item_types = ["enums", "structs", "opaque", "functions", "constants"]
+
+# `SCHEMA_VERSION` is a fine name inside a Rust crate and a poor one for a
+# macro in a C header, where it shares a namespace with every other header the
+# program includes. Renamed rather than dropped, because a consumer wants it:
+# it is how a caller decides whether it can parse the JSON it gets back.
+[export.rename]
+SCHEMA_VERSION = "CONFORM_SCHEMA_VERSION"
 
 [enum]
 prefix_with_name = false

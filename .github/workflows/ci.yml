@@ -53,6 +53,12 @@ jobs:
       - name: cargo test (default features)
         run: cargo test --workspace
 
+      # And with everything on. For `conform-ffi` this is what runs the two
+      # test files its manifest gates behind `required-features`: the one that
+      # regenerates `conform.h` and fails if the committed copy has drifted
+      # (needs `cbindgen`), and the one that compiles a C program against that
+      # header and links it against the built library (needs a C compiler).
+      # Neither belongs in the default run — see that crate's README.
       - name: cargo test (all features)
         run: cargo test --workspace --all-features
 
@@ -108,3 +114,41 @@ jobs:
 
       - name: cargo deny (conform-odps in isolation)
         run: cargo deny --all-features --manifest-path crates/conform-odps/Cargo.toml check
+
+      # And the FFI crate, which is the one §5.3 names as the standing risk:
+      # its natural dependencies — a header generator, a binding generator, a
+      # WASM toolchain — are heavy and several are copyleft, and the whole
+      # point of it being optional is that none of that reaches anybody else.
+      # `cbindgen` is already out of the graph entirely (see tools/headergen);
+      # this is what stops the next one coming back in.
+      - name: cargo deny (conform-ffi in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-ffi/Cargo.toml check
+
+  sanitise:
+    name: sanitise the C boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Nightly first and stable second, deliberately: the ASan arm needs
+      # `-Zsanitizer=address` and the runtime that ships with nightly, and
+      # everything else here — including the non-instrumented build the
+      # valgrind arm uses — should be the stable toolchain the rest of CI
+      # tests. Installing stable last makes it the default.
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      # Both arms. This is the job the plan's "valgrind/ASan clean on the C
+      # smoke test" exit criterion (§7.2) is satisfied by, and it is on Linux
+      # because valgrind is not packaged for Apple silicon — see
+      # tools/sanitise/README.md for what a macOS developer can and cannot run
+      # locally.
+      #
+      # The script builds two programs that are supposed to fail and checks
+      # that they do, so a checker that silently did not run is a failure here
+      # rather than a green tick. It also exits non-zero if nothing ran at all.
+      - name: valgrind and AddressSanitizer over the C smoke test
+        run: tools/sanitise/run.sh
+

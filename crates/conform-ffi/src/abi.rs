@@ -89,31 +89,58 @@ const HANDLE_MAGIC: u64 = u64::from_ne_bytes(*b"conform\0");
 /// address should read as `DEADconf` wherever this is built.
 const HANDLE_POISON: u64 = u64::from_ne_bytes(*b"DEADconf");
 
+// No value of this type is ever constructed. It is a *name* for what a handle
+// points at; the thing it actually points at is `Handle`, below.
+//
+// That split is load-bearing twice over. It is what makes the generated header
+// say `typedef struct ConformValidator ConformValidator;` rather than publish
+// the guard word and a pointer to a Rust enum — cbindgen renders a struct
+// without `#[repr(C)]` as opaque, and this one deliberately has none. And it
+// keeps the layout this crate *does* depend on in one `#[repr(C)]` type, where
+// the guarantee is written down rather than inferred.
+//
+// Deliberately a `//` comment rather than a doc comment: it is about this
+// crate's internals, and cbindgen copies doc comments into a header that a C
+// programmer reads.
 /// An opaque handle to a built validator.
 ///
-/// Created by [`conform_validator_new`], released by
-/// [`conform_validator_free`], and meaningful to nothing else. Its layout is
-/// deliberately not part of the ABI: a C caller only ever holds a pointer to
-/// one, which is what the annotation on the last line of this comment tells
-/// the header generator to emit.
-///
-/// cbindgen:opaque
-#[repr(C)]
+/// Created by `conform_validator_new`, released by `conform_validator_free`,
+/// and meaningful to nothing else. Its layout is deliberately not part of the
+/// ABI: a caller only ever holds a pointer to one, and only this library ever
+/// follows it.
 pub struct ConformValidator {
-    /// The guard word. First field, and `repr(C)`, so that it is at offset
-    /// zero and the probe below can read it without knowing anything else
-    /// about what it was handed.
+    /// Never read, never written, and never a real value: the type exists to
+    /// be pointed at.
+    _opaque: [u8; 0],
+}
+
+// Derived rather than written, because there is nothing to say: an instance of
+// this type does not exist. What a reader wants to inspect is a `Handle`.
+impl std::fmt::Debug for ConformValidator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ConformValidator(opaque)")
+    }
+}
+
+/// What a [`ConformValidator`] pointer actually points at.
+///
+/// `#[repr(C)]` for one reason: it puts `magic` at offset zero, and the probe
+/// in [`borrow`] reads eight bytes at offset zero of something it does not yet
+/// believe is a handle. With Rust's default representation the compiler may
+/// order fields as it likes, and a guard word at an unknown offset is not a
+/// guard word at all.
+#[repr(C)]
+struct Handle {
+    /// The guard word.
     magic: u64,
-    /// The validator proper. Boxed so this struct stays two words whatever
-    /// the adapters grow into.
+    /// The validator proper. Boxed so this stays two words whatever the
+    /// adapters grow into.
     backend: Box<Backend>,
 }
 
-// Opaque to C, so opaque here too: what a reader wants to know is which
-// standard it speaks for and whether it is still live.
-impl std::fmt::Debug for ConformValidator {
+impl std::fmt::Debug for Handle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ConformValidator")
+        f.debug_struct("Handle")
             .field("live", &(self.magic == HANDLE_MAGIC))
             .field("spec", &self.backend.spec().id)
             .finish_non_exhaustive()
@@ -164,17 +191,18 @@ unsafe fn borrow<'a>(validator: *mut ConformValidator) -> Result<&'a Backend, Co
         error::set("the validator handle was null");
         return Err(ConformStatus::NullPointer);
     }
-    if !validator
-        .addr()
-        .is_multiple_of(align_of::<ConformValidator>())
-    {
+    // Aligned for a `Handle`, which is what the pointer really addresses; the
+    // opaque `ConformValidator` it is typed as has no alignment worth
+    // checking, by design.
+    if !validator.addr().is_multiple_of(align_of::<Handle>()) {
         error::set("the validator handle is not a handle: the pointer is misaligned");
         return Err(ConformStatus::InvalidHandle);
     }
     // SAFETY: non-null and aligned, and the caller's half of the contract is
     // that it is readable. `read_unaligned` rather than a field access so that
-    // this probe never itself assumes the bytes are a `ConformValidator` — it
-    // is the check that decides whether they are.
+    // this probe never itself assumes the bytes are a `Handle` — it is the
+    // check that decides whether they are. `magic` is at offset zero because
+    // `Handle` is `#[repr(C)]`.
     let magic = unsafe { validator.cast::<u64>().read_unaligned() };
     if magic != HANDLE_MAGIC {
         error::set(if magic == HANDLE_POISON {
@@ -184,12 +212,13 @@ unsafe fn borrow<'a>(validator: *mut ConformValidator) -> Result<&'a Backend, Co
         });
         return Err(ConformStatus::InvalidHandle);
     }
-    // SAFETY: the guard word matched, so these bytes were written by
-    // `conform_validator_new` and not yet freed. The returned lifetime is
-    // unbounded, which is the caller's obligation: the handle must outlive the
-    // call, and `conform_validator_free` must not run concurrently with it.
-    // Both are documented on every entry point that takes a handle.
-    Ok(&unsafe { &*validator }.backend)
+    // SAFETY: the guard word matched, so these bytes were written as a
+    // `Handle` by `conform_validator_new` and have not been freed. The
+    // returned lifetime is unbounded, which is the caller's obligation: the
+    // handle must outlive the call, and `conform_validator_free` must not run
+    // concurrently with it. Both are documented on every entry point that
+    // takes a handle.
+    Ok(&unsafe { &*validator.cast::<Handle>() }.backend)
 }
 
 /// Read a C string argument.
@@ -242,8 +271,8 @@ pub extern "C" fn conform_version() -> *const c_char {
 /// before the validator is handed back, so a drifted schema is a failure here
 /// rather than a quiet verdict later.
 ///
-/// Returns null on failure, with the reason in [`conform_last_error`].
-/// Release the handle with [`conform_validator_free`].
+/// Returns null on failure, with the reason in `conform_last_error`.
+/// Release the handle with `conform_validator_free`.
 ///
 /// # Safety
 ///
@@ -268,10 +297,11 @@ pub unsafe extern "C" fn conform_validator_new(
         };
 
         match Backend::build(spec_id, Path::new(registry_path)) {
-            Ok(backend) => Box::into_raw(Box::new(ConformValidator {
+            Ok(backend) => Box::into_raw(Box::new(Handle {
                 magic: HANDLE_MAGIC,
                 backend: Box::new(backend),
-            })),
+            }))
+            .cast::<ConformValidator>(),
             Err(error @ (BuildError::UnknownSpec(_) | BuildError::Registry(_))) => {
                 error::set(error.message());
                 std::ptr::null_mut()
@@ -288,7 +318,7 @@ pub unsafe extern "C" fn conform_validator_new(
 /// themselves by — a path, a URL, or anything else meaningful to the caller.
 ///
 /// On success `*out_json` receives a NUL-terminated UTF-8 JSON string owned by
-/// this library; release it with [`conform_string_free`]. If `out_len` is not
+/// this library; release it with `conform_string_free`. If `out_len` is not
 /// null it receives the string's length in bytes, excluding the NUL, so a
 /// caller need not walk it. On failure `*out_json` is set to null and
 /// `*out_len`, if given, to zero.
@@ -306,7 +336,7 @@ pub unsafe extern "C" fn conform_validator_new(
 ///
 /// # Safety
 ///
-/// `validator` must be a live handle from [`conform_validator_new`] that no
+/// `validator` must be a live handle from `conform_validator_new` that no
 /// other thread is using concurrently. `document_id` must be a NUL-terminated
 /// byte string. `document` must be readable for `document_len` bytes.
 /// `out_json` must be a writable pointer to a `char*`, and `out_len`, if not
@@ -445,7 +475,7 @@ pub unsafe extern "C" fn conform_string_free(text: *mut c_char) {
 ///
 /// # Safety
 ///
-/// `validator` must be null, or a live handle from [`conform_validator_new`]
+/// `validator` must be null, or a live handle from `conform_validator_new`
 /// that has not already been freed and that no other thread is using.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn conform_validator_free(validator: *mut ConformValidator) {
@@ -461,8 +491,9 @@ pub unsafe extern "C" fn conform_validator_free(validator: *mut ConformValidator
         // the box is dropped the allocation may be reused, and the window in
         // which the poison is readable is the whole value of writing it.
         unsafe { validator.cast::<u64>().write(HANDLE_POISON) };
-        // SAFETY: as above.
-        drop(unsafe { Box::from_raw(validator) });
+        // SAFETY: as above, and reconstituted as the type it was allocated as
+        // rather than as the opaque name C knows it by.
+        drop(unsafe { Box::from_raw(validator.cast::<Handle>()) });
     });
 }
 

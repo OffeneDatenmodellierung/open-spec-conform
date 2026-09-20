@@ -13,3 +13,12 @@ Cargo.lock.bak
 # inside each generated verdicts file.
 /tools/oracle/target
 /tools/oracle/Cargo.lock
+
+# `tools/headergen` and `tools/sanitise` are outside the workspace for the same
+# reason `tools/oracle` is, so their build output needs its own lines too.
+#
+# `tools/headergen/Cargo.lock`, unlike the oracle's, IS committed: it pins
+# `cbindgen`, and an unpinned generator would let a `cbindgen` release fail the
+# header-drift test without anybody having changed an ABI.
+/tools/headergen/target
+/tools/sanitise/build

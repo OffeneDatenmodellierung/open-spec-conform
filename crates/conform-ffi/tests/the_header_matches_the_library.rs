@@ -7,38 +7,68 @@
 //! later a function has grown an argument that the header still describes the
 //! old way — at which point every C caller compiles cleanly and passes the
 //! wrong number of arguments. A header is not documentation; it is the thing
-//! the compiler believes, and a stale one is worse than none because none at
+//! the compiler believes, and a stale one is worse than none, because none at
 //! least fails loudly.
 //!
-//! So the header is regenerated here, from the same configuration that
-//! produced the committed copy, and compared byte for byte.
+//! So the header is regenerated here, from the same generator and the same
+//! configuration that produced the committed copy, and compared byte for byte.
 //!
 //! # Why the header is committed rather than generated at build time
 //!
 //! Because a C program that links this library should not have to run
 //! `cbindgen` — or have a Rust toolchain at all — to find out what it is
-//! linking. Committing the header makes the ABI reviewable in a diff, which is
-//! the only place an ABI change can realistically be caught by a human.
+//! linking. Committing the header also makes an ABI change visible in a diff,
+//! which is the only place a human will realistically catch one.
 //!
-//! # Updating it
+//! # Why the generator is a separate crate outside the workspace
 //!
-//! ```sh
-//! cargo test -p conform-ffi --features header-check          # shows the drift
-//! CONFORM_UPDATE_HEADER=1 cargo test -p conform-ffi --features header-check
+//! `cbindgen` is MPL-2.0. `deny.toml`'s allow-list is permissive licences
+//! only, and `cargo deny --all-features` resolves the whole workspace graph
+//! including optional features, so taking `cbindgen` as a dependency of this
+//! crate fails the licence gate:
+//!
+//! ```text
+//! error[rejected]: failed to satisfy license requirements
+//!    41 │ license = "MPL-2.0"
+//!       │            rejected: license is not explicitly allowed
+//!    ├ cbindgen v0.29.4
+//!      └── conform-ffi v0.1.0
 //! ```
 //!
-//! The second form writes the file and then fails anyway, so that a run which
-//! *changed the committed ABI* can never be mistaken for a run that found
-//! nothing to change.
+//! That finding is correct and an exception for it would blur the distinction
+//! the gate exists to keep sharp — between what this repository *ships* and
+//! what it *builds with*. The plan says so in as many words (§5.3, risk R4):
+//! `cbindgen` must not appear in the harness's tree. So the generator lives in
+//! `tools/headergen`, outside the workspace, exactly as `tools/oracle` does
+//! and for the same reason, and this test runs it.
+//!
+//! # Updating the header
+//!
+//! ```sh
+//! cargo run --manifest-path tools/headergen/Cargo.toml
+//! ```
+//!
+//! Then read the diff. That is the ABI change, and it is the diff a reviewer
+//! should be looking at.
 //!
 //! # Why this test is behind a feature
 //!
-//! `cbindgen` is a compiler front end with a `syn` tree behind it. Building it
-//! for every `cargo test --workspace` in this repository, for the benefit of
-//! one assertion in one crate, is not a trade worth making. CI runs
-//! `cargo test --workspace --all-features`, which includes it.
+//! It shells out to `cargo`, which will compile `cbindgen` the first time and
+//! wants a network to do it. A plain `cargo test --workspace` must not need
+//! either. CI runs `cargo test --workspace --all-features`, which includes
+//! this.
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// The workspace root — the directory `tools/` and `specs.toml` live in.
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("crates/conform-ffi sits two levels below the workspace root")
+        .to_path_buf()
+}
 
 /// Where the committed header lives.
 fn header_path() -> PathBuf {
@@ -47,24 +77,46 @@ fn header_path() -> PathBuf {
         .join("conform.h")
 }
 
-/// Regenerate the header from `src/`, using this crate's `cbindgen.toml`.
+/// Regenerate the header into a scratch file and read it back.
 fn generate() -> String {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let config = cbindgen::Config::from_file(crate_dir.join("cbindgen.toml"))
-        .expect("crates/conform-ffi/cbindgen.toml should be readable and valid");
+    let root = workspace_root();
+    let manifest = root.join("tools/headergen/Cargo.toml");
+    assert!(
+        manifest.exists(),
+        "{} is missing, so the header cannot be regenerated",
+        manifest.display()
+    );
 
-    let bindings = cbindgen::Builder::new()
-        .with_crate(crate_dir)
-        .with_config(config)
-        .generate()
-        .expect("the crate's public C ABI should be describable as a header");
+    // Beside the test binary rather than in the source tree, so a failing run
+    // leaves nothing behind for the next one to compare against by accident.
+    let destination =
+        std::env::temp_dir().join(format!("conform-ffi-header-{}.h", std::process::id()));
 
-    let mut rendered = Vec::new();
-    bindings.write(&mut rendered);
-    String::from_utf8(rendered).expect("cbindgen emits UTF-8")
+    let run = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+        .arg("run")
+        .arg("--quiet")
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .arg("--")
+        .arg(&destination)
+        .current_dir(&root)
+        .output()
+        .expect("cargo should be runnable from a cargo test");
+
+    assert!(
+        run.status.success(),
+        "the header generator failed.\n--- stdout\n{}\n--- stderr\n{}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr),
+    );
+
+    let generated = std::fs::read_to_string(&destination)
+        .unwrap_or_else(|error| panic!("{} was not written: {error}", destination.display()));
+    let _ = std::fs::remove_file(&destination);
+    generated
 }
 
-/// The first line at which two texts differ, for a message that points at
+/// The first line at which two texts differ, so the failure points at
 /// something rather than printing two files and leaving the reader to diff
 /// them.
 fn first_difference(committed: &str, generated: &str) -> String {
@@ -77,33 +129,22 @@ fn first_difference(committed: &str, generated: &str) -> String {
         }
     }
     format!(
-        "the files agree for their first {} lines; the committed copy has {} and the generated \
-         one has {}",
-        committed.lines().count().min(generated.lines().count()),
+        "the files agree line for line as far as the shorter one goes; the committed copy has {} \
+         lines and the generated one has {}",
         committed.lines().count(),
         generated.lines().count()
     )
 }
 
 #[test]
-fn the_committed_header_is_what_cbindgen_produces_today() {
+fn the_committed_header_is_what_the_generator_produces_today() {
     let generated = generate();
     let path = header_path();
 
-    if std::env::var_os("CONFORM_UPDATE_HEADER").is_some() {
-        std::fs::write(&path, &generated).expect("the header should be writable");
-        panic!(
-            "CONFORM_UPDATE_HEADER was set, so {} has been rewritten. This test fails on \
-             purpose: the ABI just changed, and a run that changes an ABI must not look like a \
-             run that found nothing to change. Review the diff, then run without the variable.",
-            path.display()
-        );
-    }
-
     let committed = std::fs::read_to_string(&path).unwrap_or_else(|error| {
         panic!(
-            "{} could not be read ({error}). Generate it with:\n    CONFORM_UPDATE_HEADER=1 \
-             cargo test -p conform-ffi --features header-check",
+            "{} could not be read ({error}). Generate it with:\n    cargo run --manifest-path \
+             tools/headergen/Cargo.toml",
             path.display()
         )
     });
@@ -111,8 +152,8 @@ fn the_committed_header_is_what_cbindgen_produces_today() {
     assert_eq!(
         committed,
         generated,
-        "{} no longer describes this library.\n{}\n\nRegenerate with:\n    \
-         CONFORM_UPDATE_HEADER=1 cargo test -p conform-ffi --features header-check",
+        "{} no longer describes this library.\n{}\n\nRegenerate with:\n    cargo run \
+         --manifest-path tools/headergen/Cargo.toml\n\nand read the diff: it is the ABI change.",
         path.display(),
         first_difference(&committed, &generated)
     );
@@ -121,10 +162,10 @@ fn the_committed_header_is_what_cbindgen_produces_today() {
 #[test]
 fn the_header_declares_every_entry_point_the_library_exports() {
     // A belt to the braces above. The comparison catches drift between the
-    // header and `cbindgen`'s reading of the source; this catches the case
+    // header and the generator's reading of the source; this catches the case
     // where *both* are wrong because a function stopped being exported — the
-    // header and the generator would agree, and the C caller would get a link
-    // error with no explanation.
+    // header and the generator would agree perfectly, and the C caller would
+    // get a link error with no explanation.
     let committed = std::fs::read_to_string(header_path()).expect("the committed header");
 
     for entry_point in [
@@ -159,7 +200,16 @@ fn the_header_declares_every_entry_point_the_library_exports() {
         );
     }
 
-    // And the compile-time ABI version, which is how a binding refuses a
-    // library it was not written against.
+    // The two compile-time constants: how a binding refuses a library it was
+    // not written against, and how it refuses a report it cannot parse.
     assert!(committed.contains("CONFORM_ABI_VERSION"));
+    assert!(committed.contains("CONFORM_SCHEMA_VERSION"));
+
+    // And the handle stays opaque. If this line ever fails it is because the
+    // header has started publishing the guard word and a pointer into this
+    // crate's internals, which would make the layout part of the ABI.
+    assert!(
+        committed.contains("typedef struct ConformValidator ConformValidator;"),
+        "the handle is no longer opaque in the header"
+    );
 }
