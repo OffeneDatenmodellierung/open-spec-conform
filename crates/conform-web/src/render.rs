@@ -191,14 +191,31 @@ fn what_this_is(out: &mut String, site: &Site) {
         "<dt>A recorded unknown beats a plausible guess.</dt><dd>Every provenance field is \
          optional, because upstream sometimes genuinely does not publish a licence or a \
          documentation site. A field nobody could determine is <em>left out</em>, and the entry \
-         says what was looked at and what it did not say. {} of the {} entries below have at \
-         least one such gap, and this page shows every one of them as \
-         <span class=\"absent\">{}</span> rather than as a blank — because a blank looks like a \
-         rendering accident, and these are answers.</dd>\n</dl>\n</section>\n",
-        for_html(&site.with_gaps().to_string()),
-        for_html(&site.specs.len().to_string()),
+         says what was looked at and what it did not say. {} at least one such gap, and this \
+         page shows every one of them as <span class=\"absent\">{}</span> rather than as a \
+         blank — because a blank looks like a rendering accident, and these are \
+         answers.</dd>\n</dl>\n</section>\n",
+        for_html(&gap_tally(site)),
         for_html(NOT_RECORDED),
     );
+}
+
+/// How many entries have a gap, phrased so that it reads as English.
+///
+/// "5 of the 5 entries below have" is what a naive interpolation produces, and
+/// it reads as though somebody forgot to special-case it — which is precisely
+/// the impression a page about honest reporting should not give. The numbers
+/// are still the registry's; only the sentence around them changes.
+fn gap_tally(site: &Site) -> String {
+    let with_gaps = site.with_gaps();
+    let total = site.specs.len();
+    match with_gaps {
+        0 => "No entry below has".to_owned(),
+        n if n == total && total == 1 => "The single entry below has".to_owned(),
+        n if n == total => format!("Every one of the {total} entries below has"),
+        1 => format!("One of the {total} entries below has"),
+        n => format!("{n} of the {total} entries below have"),
+    }
 }
 
 /// The upstream watch — the table this page exists for.
@@ -220,14 +237,17 @@ fn upstream_watch(out: &mut String, site: &Site) {
          access, which is what the last column is for.</p>\n",
     );
 
-    out.push_str("<div class=\"scroller\">\n<table class=\"watch\">\n<thead><tr>");
+    out.push_str("<div class=\"scroller\">\n<table class=\"watch\">\n");
+    out.push_str(
+        "<colgroup><col class=\"c-spec\"><col class=\"c-upstream\"><col class=\"c-pin\">\
+         <col class=\"c-digest\"><col class=\"c-poll\"></colgroup>\n",
+    );
+    out.push_str("<thead><tr>");
     for heading in [
         "Specification",
         "Canonical upstream",
         "Pinned to",
         "Vendored digest",
-        "Bytes",
-        "In tree since",
         "How we would notice",
     ] {
         let _ = write!(out, "<th scope=\"col\">{}</th>", for_html(heading));
@@ -240,14 +260,20 @@ fn upstream_watch(out: &mut String, site: &Site) {
 }
 
 /// One row of the upstream watch.
+///
+/// Five columns rather than the seven this started with. Seven put a 64-digit
+/// digest and a date beside five other cells and pushed the drift status off
+/// the right-hand edge of a 1280-pixel window — found by screenshotting the
+/// rendered page, which is the only way that kind of defect is ever found.
+/// `fetched_at` now sits under the pin and the drift badge under the digest,
+/// each beside the thing it qualifies; nothing was dropped.
 fn watch_row(out: &mut String, card: &SpecCard) {
     let spec = &card.summary;
     out.push_str("<tr>");
 
     let _ = write!(
         out,
-        "<th scope=\"row\"><a href=\"#spec-{}\"><code>{}</code></a><br><span class=\"muted\">{}</span></th>",
-        for_html(&spec.id),
+        "<th scope=\"row\"><code>{}</code><br><span class=\"muted\">{}</span></th>",
         for_html(&spec.id),
         for_html(&spec.name),
     );
@@ -258,18 +284,16 @@ fn watch_row(out: &mut String, card: &SpecCard) {
 
     let _ = write!(
         out,
-        "<td>{}</td>",
-        code_or_absence(spec.pinned_ref.as_deref())
+        "<td>{}<br><span class=\"muted\">in tree since {}</span></td>",
+        code_or_absence(spec.pinned_ref.as_deref()),
+        for_html(&spec.fetched_at),
     );
-    let _ = write!(
-        out,
-        "<td><code class=\"digest\">{}</code></td>",
-        for_html(&spec.sha256),
-    );
-    out.push_str("<td>");
+
+    out.push_str("<td><code class=\"digest\">");
+    out.push_str(&for_html(&spec.sha256));
+    out.push_str("</code><br>");
     verify_badge(out, spec.verify);
     out.push_str("</td>");
-    let _ = write!(out, "<td>{}</td>", code_or_absence(Some(&spec.fetched_at)));
 
     out.push_str("<td>");
     match &card.poll {
@@ -481,7 +505,12 @@ fn family(out: &mut String, site: &Site) {
          rest. The versions below are read from the manifests when this page is generated.</p>\n",
     );
 
-    out.push_str("<div class=\"scroller\">\n<table class=\"crates\">\n<thead><tr>");
+    out.push_str("<div class=\"scroller\">\n<table class=\"crates\">\n");
+    out.push_str(
+        "<colgroup><col class=\"c-name\"><col class=\"c-version\"><col class=\"c-published\">\
+         <col class=\"c-what\"><col class=\"c-manifest\"></colgroup>\n",
+    );
+    out.push_str("<thead><tr>");
     for heading in ["Crate", "Version", "Published", "What it is", "Manifest"] {
         let _ = write!(out, "<th scope=\"col\">{}</th>", for_html(heading));
     }
@@ -748,7 +777,33 @@ section > h2 { font-size: 1.8rem; margin-top: 0; }
 table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
 th, td { text-align: left; vertical-align: top; padding: 0.7rem 0.9rem 0.7rem 0; border-bottom: 1px solid var(--rule); }
 thead th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); white-space: nowrap; }
-.digest { font-size: 0.74rem; word-break: break-all; line-height: 1.35; display: inline-block; max-width: 20ch; }
+.digest { font-size: 0.74rem; word-break: break-all; line-height: 1.35; display: inline-block; }
+
+/* The watch table carries a 64-digit digest and a 40-character commit SHA in
+   the same row. Left to size itself it grows past the text column and pushes
+   its last column out of sight — which is what it did, and which only a
+   screenshot showed. `table-layout: fixed` with explicit shares makes the
+   table exactly as wide as the column and wraps the long values instead, and
+   the `min-width` keeps it scrollable rather than crushed on a narrow screen. */
+.watch { table-layout: fixed; min-width: 44rem; }
+.watch th, .watch td { overflow-wrap: anywhere; }
+/* `thead th` is `nowrap` so a heading does not wrap in an auto-sized table.
+   In these fixed-layout ones the column width is decided in advance, so a
+   heading too long for its share overlaps the next instead of wrapping — it
+   did, and the screenshot is what showed it. */
+.watch thead th, .crates thead th { white-space: normal; }
+.watch col.c-spec { width: 13%; }
+.watch col.c-upstream { width: 28%; }
+.watch col.c-pin { width: 21%; }
+.watch col.c-digest { width: 17%; }
+.watch col.c-poll { width: 21%; }
+.crates { table-layout: fixed; min-width: 42rem; }
+.crates th, .crates td { overflow-wrap: anywhere; }
+.crates col.c-name { width: 17%; }
+.crates col.c-version { width: 10%; }
+.crates col.c-published { width: 14%; }
+.crates col.c-what { width: 41%; }
+.crates col.c-manifest { width: 18%; }
 .muted { color: var(--muted); font-size: 0.85rem; }
 .absent {
   color: var(--absent); background: var(--absent-bg); border: 1px dashed currentColor;
