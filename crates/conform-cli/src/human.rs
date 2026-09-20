@@ -93,10 +93,14 @@ fn catalogue(run: &Run, out: &mut dyn Write) -> io::Result<()> {
         field(out, "licence", spec.licence.as_deref())?;
         writeln!(
             out,
-            "    vendored     {} ({} bytes on record as {})",
-            for_terminal(&spec.vendored_path),
-            spec.verify.as_str(),
-            for_terminal(&spec.sha256)
+            "    vendored     {}",
+            for_terminal(&spec.vendored_path)
+        )?;
+        writeln!(
+            out,
+            "    sha256       {}  (re-hashed just now: {})",
+            for_terminal(&spec.sha256),
+            spec.verify.as_str()
         )?;
         field(out, "fetched_at", Some(&spec.fetched_at))?;
         if !spec.provenance_gaps.is_empty() {
