@@ -1,0 +1,29 @@
+{
+  "repo": "open-spec-conform",
+  "plan": "docs/plan/0001-implementation-plan.md",
+  "remote": "NOT YET CREATED - awaiting human decision on OffeneDatenmodellierung/open-spec-conform (public/private)",
+  "tasks": [
+    {
+      "id": "phase-0-1-core",
+      "phase": "0+1",
+      "title": "build-conform-core",
+      "worker": "claude_code",
+      "purpose": "implement",
+      "worktree": "/Users/mark/GIT/OffeneDatenmodellierung/osc-phase1-core",
+      "branch": "feat/conform-core",
+      "base": "87c3cec",
+      "status": "dispatched",
+      "reviewer": "codex or pi (different vendor)",
+      "pr": null
+    },
+    {
+      "id": "phase-2-research",
+      "phase": "2 (research)",
+      "title": "research-vendored-schema-provenance",
+      "worker": "pi",
+      "purpose": "explore",
+      "status": "dispatched",
+      "feeds": "phase-2-registry"
+    }
+  ]
+}

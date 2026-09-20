@@ -146,6 +146,44 @@ version, no source URL, no fetch date, and no way to detect that upstream has
 changed. Nobody can answer "is this current?" without manually diffing against
 Bitol. **No `PROVENANCE.md` exists anywhere in this repo.**
 
+#### 1.2.1 Verified provenance of the two vendored Bitol schemas
+
+Measured directly, not inferred. Both files are dated 15 Aug 05:40.
+
+| | `odcs-json-schema-v3.1.0.json` | `odps-json-schema-latest.json` |
+|---|---|---|
+| size | 86 441 bytes | 15 783 bytes |
+| SHA-256 | `2cb7dd6fe43344d2233e0406438622681dc3ebadcf8f0d606a15b40c8f6752c0` | `95ae53a90d85d17666b6a28d22ea5fff20313048fded5b92599546efe0589e14` |
+| `$schema` | draft 2019-09 | draft 2019-09 |
+| `$id` | **absent** | **absent** |
+| `title` | `Open Data Contract Standard (ODCS)` | `Open Data Product Standard (ODPS)` |
+
+Two findings, both of which strengthen the case for `conform-registry`:
+
+**Neither file carries a `$id`.** A JSON Schema's `$id` is the one field that
+would record where the document came from. With it absent, and with no
+`PROVENANCE.md`, the vendored bytes contain *zero* machine-readable link back to
+Bitol. The filename is the only provenance signal that exists, which is precisely
+why `odps-json-schema-latest.json` is unanswerable — its filename encodes nothing.
+
+**The ODPS version is nonetheless recoverable, from `properties.apiVersion`:**
+
+```json
+"apiVersion": { "default": "v1.0.0", "enum": ["v0.9.0", "v1.0.0"] }
+```
+
+A schema can only enumerate `apiVersion` values that existed when it was written,
+so the enum's maximum dates the document. **`odps-json-schema-latest.json` is
+ODPS v1.0.0** (accepting v0.9.0 documents). The same test applied to the ODCS file
+gives `enum: [v3.1.0, v3.0.2, v3.0.1, v3.0.0, v2.2.2, v2.2.1, v2.2.0]`, max
+`v3.1.0`, corroborating its filename.
+
+This resolves the Phase 2 unknown ahead of schedule: the ODPS entry pins to
+`v1.0.0`, and the file should be renamed `odps-json-schema-v1.0.0.json` to match.
+Note the inference is *dating*, not proof of byte-identity with any upstream tag —
+Phase 2 must still diff the vendored bytes against Bitol's `v1.0.0` artefact and
+record the result, since a local edit would not show up in the enum.
+
 ### 1.3 Canonical upstream sources found referenced
 
 | Spec | Canonical URL referenced in-repo |
@@ -428,9 +466,19 @@ Design rules:
 ### 3.4 Migration of existing vendored schemas
 
 Phase 2 deliverable: write `specs.toml` entries for all four vendored schemas in
-`data-modelling-sdk/schemas/`, resolve what `odps-json-schema-latest.json`
-actually is (diff against Bitol releases to identify the version), pin it, and
-de-duplicate the copy under `specs/003-odcs-field-preservation/schemas/`.
+`data-modelling-sdk/schemas/`, and de-duplicate the copy under
+`specs/003-odcs-field-preservation/schemas/`.
+
+The ODPS version question is **already answered** (§1.2.1): the file is ODPS
+v1.0.0, dated by its `apiVersion` enum. Phase 2 therefore reduces to confirming
+byte-equivalence against Bitol's published v1.0.0 artefact — the enum dates the
+document but cannot detect a local modification — then pinning it and renaming
+the file to `odps-json-schema-v1.0.0.json`.
+
+If that diff comes back non-identical, that is a *finding, not a blocker*: record
+the divergence in the entry's `notes` field and pin the SHA-256 regardless. A
+knowingly-divergent vendored copy with recorded provenance is strictly better
+than today's situation, where divergence would be invisible.
 
 ---
 
@@ -700,7 +748,7 @@ prerequisites for everything; 3–7 can then proceed with some parallelism.
 | Phase | Deliverable | Depends on | Exit criteria |
 |---|---|---|---|
 | **1** | `conform-core` 0.1.0 — types, trait, resolution, gate policy | — | Compiles with zero non-std deps; `cargo deny` clean standalone; no-leakage gate passes; three-way `Resolution` explicitly tested for "exists but not inspected" vs "does not exist" |
-| **2** | `conform-registry` 0.1.0 + `specs.toml` for all known specs | 1 | Every vendored schema in `data-modelling-sdk` has a pinned entry; `odps-…-latest.json` identified and pinned; `registry verify` green; `latest` rejected by test |
+| **2** | `conform-registry` 0.1.0 + `specs.toml` for all known specs | 1 | Every vendored schema in `data-modelling-sdk` has a pinned entry; ODPS pinned at v1.0.0 (§1.2.1) and diffed against Bitol's artefact; `registry verify` green; `latest` rejected by test |
 | **3** | `conform-okf` 0.1.0 — migrate Roteiro's `okf::conform` | 1, 2 | `tests/okf_interop.rs` passes **unchanged in its assertions**; `Finding`/`CheckReport` retired; CLI behaviour byte-identical (NFR-005) |
 | **4** | `conform-cli` 0.1.0 — CLI, `--json`, then TUI | 1, 2, 3 | `--json`/non-`--json` diagnostic-set equality test; bare `validate` exits 0 with findings; TUI navigates registry and shows upstream links |
 | **5** | `conform-odcs` + `conform-odps` 0.1.0 | 1, 2, §1.4 resolved | Schema-conformance fixtures pass; **oracle strategy agreed per §1.4** |
