@@ -88,6 +88,43 @@ fn the_absences_json_reports_are_the_ones_the_registry_itself_names() {
 }
 
 #[test]
+fn the_odcl_entrys_three_absences_are_null_in_json_and_not_recorded_in_the_terminal() {
+    // Named rather than left to the sweep above, because `odcl` is the entry
+    // this binary most recently learned to validate, and a renderer that fills
+    // a field in is likeliest to do it for the entry somebody has just been
+    // editing. `specs.toml` records no homepage, no steward and no licence for
+    // it, and explains each absence in `notes`.
+    let (json, _) = conform_json(&["registry", "list", "--spec", "odcl"]);
+    let odcl = &json["specs"][0];
+    assert_eq!(odcl["id"], serde_json::json!("odcl"));
+
+    for field in ["homepage", "steward", "licence"] {
+        assert!(
+            odcl["upstream"][field].is_null(),
+            "`odcl`.{field} is {}, and the registry records nothing for it",
+            odcl["upstream"][field]
+        );
+    }
+    // Present fields stay present: an absence test that passed by nulling
+    // everything would prove the opposite of what it claims.
+    assert_eq!(
+        odcl["upstream"]["repository"],
+        serde_json::json!("https://github.com/datacontract/datacontract-specification")
+    );
+    assert_eq!(odcl["upstream"]["pinned_ref"], serde_json::json!("1.2.1"));
+
+    // And in the terminal, the same three absences are words rather than gaps.
+    let output = conform(&["registry", "list", "--spec", "odcl"]);
+    assert_eq!(output.code, 0);
+    assert_eq!(
+        output.stdout.matches("(not recorded)").count(),
+        3,
+        "expected exactly the three absences `specs.toml` records for `odcl`:\n{}",
+        output.stdout
+    );
+}
+
+#[test]
 fn the_human_catalogue_says_not_recorded_rather_than_leaving_a_blank() {
     let output = conform(&["registry", "list"]);
     assert_eq!(output.code, 0);

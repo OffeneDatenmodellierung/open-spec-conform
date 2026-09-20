@@ -28,6 +28,12 @@
 //! exactly as the design says it should. Nothing here injects a diagnostic by
 //! hand; if that rule stopped quoting the document, this test would stop
 //! finding its payload and would say so.
+//!
+//! It is held for `conform-lexicon` too, through that crate's `ODCL205`
+//! (`` `info.status` is `{status}` ``), and for the same reason: every adapter
+//! in this family hands the escaping obligation here, so every adapter this
+//! binary drives has to be shown discharging it. An adapter wired in without
+//! its half of this test is an adapter whose payloads reach the terminal.
 
 use std::fmt::Write as _;
 
@@ -71,6 +77,25 @@ fn yaml_quoted(text: &str) -> String {
     }
     quoted.push('"');
     quoted
+}
+
+/// A minimal ODCL document whose `info.status` is the payload.
+///
+/// ODCL carries no `kind`; the root `dataContractSpecification` is what routes
+/// it, and `id` and `info.title`/`info.version` are what the schema requires.
+/// The status itself is published as `examples` rather than an `enum`, so the
+/// schema has nothing to say about it and the finding that quotes it is the
+/// hygiene rule's — exactly the shape of the ODCS vector above.
+fn hostile_lexicon() -> String {
+    format!(
+        "dataContractSpecification: 1.2.1\n\
+         id: urn:datacontract:checkout:orders\n\
+         info:\n\
+        \u{20}\u{20}title: Orders\n\
+        \u{20}\u{20}version: 1.0.0\n\
+        \u{20}\u{20}status: {}\n",
+        yaml_quoted(HOSTILE)
+    )
 }
 
 /// Everything this test insists must never reach a terminal.
@@ -182,4 +207,85 @@ fn a_hostile_document_name_is_escaped_too() {
         document.contains('\u{202e}'),
         "the JSON location must name the file as it really is, so a consumer can open it"
     );
+}
+
+#[test]
+fn the_payload_really_does_reach_an_odcl_diagnostic() {
+    // The negative control for the two ODCL tests below, and also the proof
+    // that the routing reached `conform-lexicon` at all: an `ODCL205` can only
+    // have come from that adapter.
+    let directory = scratch("hostile-lexicon-control");
+    let path = write(&directory, "legacy.yaml", &hostile_lexicon());
+    let (json, _) = conform_json(&["validate", &path]);
+
+    let carrying: Vec<&serde_json::Value> = json["diagnostics"]
+        .as_array()
+        .expect("diagnostics is an array")
+        .iter()
+        .filter(|d| d["message"].as_str().is_some_and(|m| m.contains(HOSTILE)))
+        .collect();
+
+    assert_eq!(
+        carrying.len(),
+        1,
+        "expected exactly one diagnostic quoting the document's `info.status`; \
+         the adapter's hygiene rule may have stopped interpolating it"
+    );
+    assert_eq!(carrying[0]["code"], serde_json::json!("ODCL205"));
+}
+
+#[test]
+fn no_control_or_bidi_character_from_an_odcl_document_survives_into_the_terminal() {
+    let directory = scratch("hostile-lexicon-human");
+    let path = write(&directory, "legacy.yaml", &hostile_lexicon());
+    let output = conform(&["validate", &path]);
+
+    for character in FORBIDDEN {
+        assert!(
+            !output.stdout.contains(character),
+            "U+{:04X} reached stdout from an ODCL document:\n{}",
+            character as u32,
+            output.stdout.escape_default()
+        );
+    }
+
+    // Neutralised, not deleted — same obligation, same evidence.
+    for expected in ["<U+202E>", "<U+001B>", "<U+0007>", "<U+200B>"] {
+        assert!(
+            output.stdout.contains(expected),
+            "{expected} is missing, so the payload was dropped rather than shown"
+        );
+    }
+    assert!(output.stdout.contains("act<U+202E>evi<U+001B>[31mtcani"));
+}
+
+#[test]
+fn json_receives_the_bytes_the_odcl_document_really_held() {
+    let directory = scratch("hostile-lexicon-json");
+    let path = write(&directory, "legacy.yaml", &hostile_lexicon());
+    let (json, _) = conform_json(&["validate", &path]);
+
+    let message = json["diagnostics"]
+        .as_array()
+        .expect("diagnostics is an array")
+        .iter()
+        .find_map(|d| d["message"].as_str().filter(|_| d["code"] == "ODCL205"))
+        .expect("the ODCL status rule reported something");
+
+    assert!(
+        message.contains(HOSTILE),
+        "the payload was altered on its way into JSON: {}",
+        message.escape_default()
+    );
+
+    // The opposite direction, which is the half a renderer gets wrong by
+    // escaping once too often. A consumer reading `<U+202E>` where the
+    // document held one character has been handed corrupted data.
+    for terminal_escape in ["<U+202E>", "<U+001B>", "<U+0007>", "<U+200B>"] {
+        assert!(
+            !message.contains(terminal_escape),
+            "{terminal_escape} appears in the ODCL JSON message, so terminal escaping leaked \
+             into a sink that is not a terminal"
+        );
+    }
 }
