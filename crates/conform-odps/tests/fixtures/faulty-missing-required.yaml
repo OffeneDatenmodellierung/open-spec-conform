@@ -1,0 +1,7 @@
+# Two of the four required properties are absent: `id` and `status`.
+#
+# The pre-existing `validate_odps_internal` reports exactly one of them,
+# because `jsonschema`'s `validate` short-circuits and a `Result<(), String>`
+# has nowhere to put the other. This crate reports two.
+apiVersion: v1.0.0
+kind: DataProduct

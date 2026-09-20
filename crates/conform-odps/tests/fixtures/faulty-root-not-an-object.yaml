@@ -1,0 +1,3 @@
+# A scalar at the root. A data product is an object; this is a string that
+# happens to be valid YAML.
+order-analytics
