@@ -1,0 +1,23 @@
+# Declares a specification version the schema's enum still accepts, seven
+# versions behind the one this repository pins. Legal, and worth saying:
+# rules added after 0.9.3 were never written for this document.
+dataContractSpecification: 0.9.3
+id: urn:datacontract:legacy:shipments
+info:
+  title: Shipments
+  version: 0.3.0
+  status: deprecated
+  description: The legacy shipments extract, retained for reconciliation only.
+  owner: logistics
+servers:
+  warehouse:
+    type: local
+    path: /data/shipments.csv
+    format: csv
+models:
+  shipments:
+    type: table
+    fields:
+      shipment_id:
+        type: string
+        required: true

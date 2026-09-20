@@ -1,0 +1,30 @@
+# Fields that say nothing about what they hold. `type` and `$ref` are both
+# optional in the schema, so a field carrying only a description conforms
+# completely — and no consumer can check a single value against it.
+#
+# `order_id` is the control: it declares a type, and must not be flagged.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-untyped
+info:
+  title: Orders
+  version: 1.0.0
+  status: active
+  description: Two of these three fields describe nothing.
+  owner: checkout-platform
+servers:
+  production:
+    type: local
+    path: /data/orders.parquet
+    format: parquet
+models:
+  orders:
+    type: table
+    fields:
+      order_id:
+        type: string
+        required: true
+      placed_at:
+        description: When the order was placed.
+      shipping_address:
+        description: Where it goes.
+        required: false

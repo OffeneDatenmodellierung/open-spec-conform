@@ -1,0 +1,31 @@
+# The headline of this corpus.
+#
+# `modles:` is a misspelling of `models:`. The ODCL root schema does NOT close
+# `additionalProperties`, so the published schema accepts this document in
+# silence and the pre-existing validator returns Ok(()) — while every rule
+# anybody ever writes against `models` sees nothing at all. ODCS closes its
+# root and catches the same mistake as an error; ODCL cannot.
+#
+# This crate reports it as ODCL206, a warning, so the verdict is unchanged and
+# the reader is told.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-misspelled
+info:
+  title: Orders
+  version: 1.0.0
+  status: active
+  description: One row per customer order.
+  owner: checkout-platform
+servers:
+  production:
+    type: local
+    path: /data/orders.parquet
+    format: parquet
+modles:
+  orders:
+    fields:
+      order_id:
+        type: string
+servicelevel:
+  availability:
+    description: Also misspelled; the real key is `servicelevels`.

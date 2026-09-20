@@ -57,6 +57,12 @@ pub(crate) struct SchemaFacts {
     field_deprecations: BTreeMap<String, String>,
     /// Deprecated keys of a `Definition`, and upstream's own message for each.
     definition_deprecations: BTreeMap<String, String>,
+    /// Every `type` the `servers` dispatch has a sub-schema for — read from
+    /// the `const`s in the schema's own `if` branches.
+    dispatched_server_types: BTreeSet<String>,
+    /// Whether that dispatch is unreachable under the draft the schema
+    /// declares. See [`servers_dispatch_is_inert`].
+    server_dispatch_is_inert: bool,
 }
 
 /// The `Field` sub-schema, as a JSON Pointer into the schema document.
@@ -64,6 +70,8 @@ const FIELD_SCHEMA: &str =
     "/properties/models/additionalProperties/properties/fields/additionalProperties";
 /// The `Definition` sub-schema, likewise.
 const DEFINITION_SCHEMA: &str = "/properties/definitions/additionalProperties";
+/// The `servers` value sub-schema, likewise.
+const SERVER_SCHEMA: &str = "/properties/servers/additionalProperties";
 
 impl SchemaFacts {
     /// Read the facts out of a compiled-and-verified schema document.
@@ -90,8 +98,64 @@ impl SchemaFacts {
                 .unwrap_or_default(),
             field_deprecations: deprecations(schema, FIELD_SCHEMA),
             definition_deprecations: deprecations(schema, DEFINITION_SCHEMA),
+            dispatched_server_types: dispatched_server_types(schema),
+            server_dispatch_is_inert: servers_dispatch_is_inert(schema),
         }
     }
+}
+
+/// Every server `type` the schema's `servers` dispatch has a branch for.
+///
+/// Read out of the `const`s in its own `allOf`/`if` chain, so this cannot
+/// drift from the nineteen technologies the vendored schema actually names.
+fn dispatched_server_types(schema: &Value) -> BTreeSet<String> {
+    schema
+        .pointer(&format!("{SERVER_SCHEMA}/allOf"))
+        .and_then(Value::as_array)
+        .map(|branches| {
+            branches
+                .iter()
+                .filter_map(|branch| {
+                    branch
+                        .pointer("/if/properties/type/const")
+                        .and_then(Value::as_str)
+                        .map(ToOwned::to_owned)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Whether the `servers` dispatch is unreachable as the schema is written.
+///
+/// Two conditions, both read from the schema rather than assumed:
+///
+/// 1. the `servers` value schema carries a `$ref` **and** sibling keywords;
+/// 2. the document declares a draft in which `$ref` suppresses its siblings —
+///    draft-07 and earlier. From 2019-09 onward `$ref` is an ordinary
+///    applicator and its siblings apply normally.
+///
+/// Both together mean the `allOf` chain is dead code. If upstream moves the
+/// schema forward a draft, or lifts the `$ref` into the `allOf`, this returns
+/// false and [`codes::SERVER_TYPE_NOT_INSPECTED`] stops firing — without
+/// anybody editing this function. `tests/the_server_dispatch_is_dead.rs`
+/// proves the mechanism in isolation rather than trusting this comment.
+fn servers_dispatch_is_inert(schema: &Value) -> bool {
+    let Some(servers) = schema.pointer(SERVER_SCHEMA).and_then(Value::as_object) else {
+        return false;
+    };
+    if !servers.contains_key("$ref") || servers.len() < 2 {
+        return false;
+    }
+    let draft = schema.get("$schema").and_then(Value::as_str).unwrap_or("");
+    // Matched on what the drafts are actually spelled, rather than on a
+    // parsed version: these are the exact `$schema` values the suppressing
+    // drafts publish, and a `$schema` this does not recognise is treated as a
+    // modern draft — the conservative reading, because it makes this crate
+    // report less rather than assert something it has not established.
+    ["draft-07", "draft-06", "draft-04", "draft-03"]
+        .iter()
+        .any(|suppressing| draft.contains(suppressing))
 }
 
 /// The keys of an object node, or an empty set for anything else.
@@ -146,6 +210,12 @@ pub(crate) fn beyond_the_schema(
     let mut found = Vec::new();
     root_rules(contract, facts, document, spec, &mut found);
     info_rules(contract.get("info"), facts, document, spec, &mut found);
+
+    if let Some(servers) = contract.get("servers").and_then(Value::as_object) {
+        for (name, server) in servers {
+            found.extend(server_dispatch_note(server, name, facts, document, spec));
+        }
+    }
 
     if let Some(definitions) = contract.get("definitions").and_then(Value::as_object) {
         for (name, definition) in definitions {
@@ -302,6 +372,45 @@ fn info_rules(
             spec,
         ));
     }
+}
+
+/// What this run did **not** check about one server.
+///
+/// Returns nothing when the dispatch works, when the server declares no
+/// `type`, or when the type it declares has no sub-schema to have been skipped
+/// — three different ways of having nothing to report, none of which is a
+/// finding.
+fn server_dispatch_note(
+    server: &Value,
+    name: &str,
+    facts: &SchemaFacts,
+    document: &DocumentId,
+    spec: &SpecRef,
+) -> Option<Diagnostic> {
+    if !facts.server_dispatch_is_inert {
+        return None;
+    }
+    let declared = server.get("type").and_then(Value::as_str)?;
+    if !facts.dispatched_server_types.contains(declared) {
+        return None;
+    }
+    Some(
+        Diagnostic::new(
+            Severity::Info,
+            codes::SERVER_TYPE_NOT_INSPECTED,
+            at(document, &format!("/servers/{}", escape(name))),
+            format!(
+                "server `{name}` declares `type: {declared}`, and was checked against \
+                 `BaseServer` only — the `{declared}` sub-schema was not applied"
+            ),
+        )
+        .with_help(
+            "not a fault in this document: the schema's `servers` value carries a `$ref` \
+             alongside its `allOf` dispatch, and under the draft it declares a `$ref` suppresses \
+             its siblings, so every per-technology branch is unreachable",
+        )
+        .with_spec_ref(spec.clone()),
+    )
 }
 
 /// One hygiene warning, assembled the one way every rule above assembles one.

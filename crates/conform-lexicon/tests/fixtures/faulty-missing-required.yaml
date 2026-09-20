@@ -1,0 +1,7 @@
+# Two of the three required root keys are absent, and so are both of `info`'s.
+# Four separate findings, which is exactly the count a `Result<(), String>`
+# cannot carry.
+dataContractSpecification: 1.2.1
+info:
+  status: active
+  description: An order contract with no id and no titled, versioned info.

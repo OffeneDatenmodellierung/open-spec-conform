@@ -1,0 +1,20 @@
+# An ODCS contract, handed to the ODCL validator.
+#
+# It is a perfectly good Open Data Contract Standard document and it is not an
+# ODCL document at all: `dataContractSpecification` is required and absent,
+# and so are `id` and `info`. Both this crate and the pre-existing
+# `validate_odcl_internal` fail it, because neither sniffs.
+#
+# The mirror image is where the defect lives: `validate_odcs_internal` DOES
+# sniff, and hands ODCL-shaped documents to the ODCL validator while returning
+# the result as though ODCS had been checked. See
+# docs/findings/0001-upstream-defects.md, F-001.
+apiVersion: v3.1.0
+kind: DataContract
+id: urn:datacontract:checkout:orders-odcs
+version: 1.0.0
+status: active
+schema:
+  - name: orders
+    logicalType: object
+    physicalName: orders_v1

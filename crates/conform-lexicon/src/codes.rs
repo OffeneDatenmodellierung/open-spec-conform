@@ -14,7 +14,7 @@
 //! | `ODCL0xx` | intake — the bytes could not be turned into a document at all | error |
 //! | `ODCL1xx` | schema conformance — the document violates the published schema | error |
 //! | `ODCL2xx` | hygiene — the document conforms, but something about it is questionable | warning |
-//! | `ODCL3xx` | cross-reference — what happened when a reference inside the document was followed | warning where a target is absent, info where it resolved or was not followed |
+//! | `ODCL3xx` | what was and was not checked — following a reference, and a sub-schema the document never got checked against | warning where a target is absent, info where something resolved or was not inspected |
 //! | `ODCL9xx` | setup and provenance — about the validator, not the document | error, except [`VALIDATED_AGAINST`] |
 //!
 //! Only the `ODCL0xx` and `ODCL1xx` bands are errors about the document.
@@ -179,9 +179,10 @@ pub const UNTYPED_FIELD: &str = "ODCL207";
 pub const DEPRECATED_KEYWORD: &str = "ODCL208";
 
 // ---------------------------------------------------------------------------
-// ODCL3xx — cross-reference. What happened when a reference *inside* the
-// document was followed, expressed as `conform_core::Resolution` and reported
-// with the two non-resolving outcomes kept apart.
+// ODCL3xx — what was and was not checked. Every code here is a
+// `conform_core::Resolution` reported with its three outcomes kept apart:
+// found, genuinely absent, or never looked at. Fusing the last two is the
+// defect `conform-core` exists to prevent.
 // ---------------------------------------------------------------------------
 
 /// A field's `references` names a `model.field` that this document does not
@@ -220,6 +221,31 @@ pub const REFERENCE_NOT_INSPECTED: &str = "ODCL302";
 /// recorded is that the check *ran*, which is the only thing that distinguishes
 /// it from [`REFERENCE_NOT_INSPECTED`].
 pub const REFERENCE_RESOLVED: &str = "ODCL303";
+
+/// A server was checked against `BaseServer` only, and **not** against the
+/// sub-schema its declared `type` names.
+///
+/// Not a fault in the document, and not a fault in this crate: the vendored
+/// schema's `servers` value is `{ "$ref": "#/$defs/BaseServer", "allOf": [ …
+/// nineteen `if`/`then` branches … ] }`, and the schema declares draft-07,
+/// where a `$ref` alongside other keywords means **every sibling keyword is
+/// ignored**. The whole per-technology dispatch is therefore unreachable, and
+/// a `type: postgres` server missing every field `PostgresServer` requires
+/// conforms.
+///
+/// So this is a
+/// [`Resolution::NotInspected`](conform_core::Resolution::NotInspected) about
+/// the *validator's own coverage*, reported as information. The verdict is
+/// unchanged — it is the schema's verdict, as everything here is — and the
+/// reader is told which check did not happen rather than left to infer from
+/// silence that one did.
+///
+/// Both halves of the condition are read from the vendored schema: the draft
+/// from its `$schema`, the dispatched type names from the `const`s in its own
+/// `if` branches. If upstream moves the schema to 2019-09 or later, or lifts
+/// the `$ref` out to a sibling-free position, the dispatch starts working and
+/// this code stops firing without anybody editing it.
+pub const SERVER_TYPE_NOT_INSPECTED: &str = "ODCL304";
 
 // ---------------------------------------------------------------------------
 // ODCL9xx — the validator's own setup. These describe this repository's
