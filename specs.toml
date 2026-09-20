@@ -244,3 +244,85 @@ what it says is a placeholder.
   method   = "github-commit"
   field    = "sha"
   cadence  = "monthly"
+
+
+# ---------------------------------------------------------------------------
+# OKF — the one entry here whose vendored artefact is not a schema, because the
+# specification does not publish one.
+# ---------------------------------------------------------------------------
+[[spec]]
+id            = "okf"
+name          = "Open Knowledge Format"
+version       = "0.2"
+repository    = "https://github.com/GoogleCloudPlatform/open-knowledge-format"
+steward       = "Google LLC"
+licence       = "Apache-2.0"
+pinned_ref    = "ad30107c31c06aec8a7d5636e0d1058118604e6f"
+vendored_path = "crates/conform-okf/tests/fixtures/okf-upstream/SHA256SUMS"
+sha256        = "bff09cf2d6443e82cddb5024aea02c9d9692e229fdc33a100ca26d01a70ca5dc"
+fetched_at    = "2026-09-20"
+notes = """
+**What is pinned here is not a schema.** OKF is a prose specification: there \
+is no JSON Schema, no machine-readable artefact, nothing of the shape the four \
+entries above vendor. What this repository holds instead is upstream's own \
+published corpus — two of the four knowledge bundles in the specification \
+repository, vendored as `conform-okf`'s fixtures — and the artefact named \
+above is `SHA256SUMS`, a manifest of the twenty markdown files in it. A corpus \
+cannot have one digest; a manifest of a corpus can, and drift in any one file \
+changes it.
+
+That indirection costs one guard, so the guard is supplied. \
+`conform-registry` re-hashes `SHA256SUMS` on every run, which stops the \
+registry drifting from the manifest but says nothing about the twenty files \
+it describes. `conform-okf`'s `vendored_fixtures_match_the_manifest` test \
+re-hashes all twenty and compares them to the manifest, and asserts the file \
+count so that a deletion is caught rather than passing quietly. Neither guard \
+alone closes the chain.
+
+Provenance evidence, and its standing: every upstream fact below is \
+**second-hand**, transcribed from the hand-written `PROVENANCE.md` that \
+accompanied these bytes in `roteiro`, where they were vendored on 2026-09-01. \
+Nothing has been fetched — no network access was used — so none of it has \
+been checked against what upstream serves today. The fixtures' own \
+`PROVENANCE.md` restates this at the point a reader meets the bytes.
+
+`pinned_ref` is the commit that record names, \
+`ad30107c31c06aec8a7d5636e0d1058118604e6f` (2026-08-21), and it is a commit \
+SHA rather than a tag: OKF's corpus is not released as versioned artefacts, so \
+a commit is what identifies a revision of it. `version = "0.2"` is the \
+specification version those bundles are conformant with, which is a different \
+statement from the pin and is why both are recorded.
+
+`licence` and `steward`: the same record states Apache-2.0, read from \
+`LICENSE.md` at the upstream repository root (it notes there is no `NOTICE` \
+file), and a copyright holder of Google LLC. `steward` is therefore the \
+recorded **copyright holder**, not a maintaining body that named itself one — \
+the distinction that kept `steward` out of the `odcl` entry, recorded here \
+rather than smoothed over. It is filled in because there is evidence for it; \
+it is qualified because the evidence is of the weaker kind.
+
+`homepage` absent: nothing in this estate records a documentation site for \
+OKF. Every reference to it across these repositories is the GitHub repository \
+URL already in `repository`, and guessing a docs address is precisely the \
+failure mode this file is built to prevent.
+
+Known limitation, stated rather than papered over: the pin dates the corpus, \
+it does not prove byte-identity with what `GoogleCloudPlatform` holds at \
+`ad30107c`. Diffing these twenty files against the upstream tree at that \
+commit is outstanding work; if that diff comes back non-identical it is a \
+finding to record here, not a reason to unpin.
+
+Custody chain: copied 2026-09-20 from \
+`roteiro/crates/rto-render/tests/fixtures/okf-upstream/`, byte-identical \
+(`diff -r` clean over all twenty files). That directory was last written there \
+by commit `8187c90985b379cf5432ac91e39e293cd0c24a25` (2026-09-01). The \
+selection was trimmed before it reached this repository — two of four bundles, \
+markdown only — and the fixtures' `PROVENANCE.md` records exactly what was \
+dropped, as Apache-2.0 §4(b) requires of a modified selection.
+"""
+
+  [spec.poll]
+  endpoint = "https://api.github.com/repos/GoogleCloudPlatform/open-knowledge-format/commits?path=bundles"
+  method   = "github-commit"
+  field    = "sha"
+  cadence  = "monthly"

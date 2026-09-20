@@ -1,0 +1,64 @@
+[package]
+name = "conform-okf"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011). It matters more
+# here than anywhere: this crate tracks a specification whose release cadence is
+# Google's, and `okf-core`'s, which is one independent author's.
+version = "0.1.0"
+
+description = "Open Knowledge Format v0.2 conformance and hygiene checking, reported as conform-core diagnostics."
+readme = "README.md"
+keywords = ["okf", "conformance", "knowledge", "diagnostics", "linting"]
+categories = ["development-tools", "development-tools::testing"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[features]
+default = []
+# Serialization only. Enabling this feature MUST NOT change which diagnostics
+# are produced or whether a report gates — the rule `conform-core` states and
+# this crate inherits, because every rule below is feature-unconditional.
+serde = ["dep:serde", "conform-core/serde"]
+
+[dependencies]
+# The shared vocabulary. A finding here is the same `Diagnostic` a reader of
+# any other adapter in this family already knows how to render.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
+# The model every rule below is expressed over: an independent pure-Rust
+# reading of the OKF v0.2 specification by an author who is not us. Nothing in
+# this crate parses OKF, so when the specification changes the parsing follows
+# upstream and only the questions are ours. One crate, zero transitive
+# dependencies, Apache-2.0.
+#
+# Its companion `okf-validator` is deliberately NOT taken: none of its
+# dependencies is optional and it syntax-checks fenced code blocks, so taking
+# it means taking `rustpython-parser` — 61 crates, `LGPL-3.0-only` through the
+# `malachite` tree, and unmaintained advisories. `cargo deny` refuses that on
+# both counts. See the crate documentation for what that costs and why the
+# structural half is the half that is about OKF.
+okf-core = "0.2.7"
+
+# Serialization of this crate's own report types, behind the same off-by-default
+# feature `conform-core` uses and under the same rule: enabling it MUST NOT
+# change which diagnostics are produced or whether a report gates.
+serde = { version = "1", default-features = false, features = ["std", "derive"], optional = true }
+
+[dev-dependencies]
+# One test only: that the `SpecRef` this crate stamps on every diagnostic
+# resolves to a real entry in the repository's `specs.toml`, pinned to the
+# commit the fixtures came from. A `spec_ref` that leads nowhere is decoration,
+# and nothing else in the workspace would notice.
+conform-registry = { path = "../conform-registry", version = "0.1.0" }
+
+[lints]
+workspace = true
