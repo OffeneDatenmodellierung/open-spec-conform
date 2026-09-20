@@ -33,6 +33,12 @@
 //!   source for the real registry's URLs, digests and pins — and proves the
 //!   scanner works by running it against a string that contains one.
 //!
+//! That the two are genuinely complementary is measured rather than asserted:
+//! a literal URL planted in the renderer is caught by the scan and missed by
+//! the substitution test, and a renderer that reads the real `specs.toml`
+//! behind the registry it was handed is caught by the substitution test and
+//! missed by the scan. See this crate's README for both results.
+//!
 //! # Absence is rendered as absence
 //!
 //! `specs.toml` deliberately omits `licence` on three of its five entries and
