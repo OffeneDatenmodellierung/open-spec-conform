@@ -252,9 +252,16 @@ void conform_validator_free(struct ConformValidator *validator);
  * Panics on purpose, catches it, and returns `CONFORM_STATUS_PANIC`. A
  * binding should call this once at start-up: getting that code back is proof
  * that the library it linked was built with unwinding and that the net under
- * every other entry point is real. A process that *dies* here has linked a
- * `panic = "abort"` build, in which case no entry point in this library is
- * safe to call from C and the only fix is to rebuild it.
+ * every other entry point is real.
+ *
+ * A process that *dies* here — aborts, or traps — has linked a build with
+ * `panic = "abort"`, where there is no unwinding for `catch_unwind` to
+ * catch. `wasm32-unknown-unknown` is such a target, and this function traps
+ * with `unreachable` there. That is the honest answer rather than a
+ * malfunction: in such a build the pointer checks and the status codes still
+ * work, but a panic anywhere inside this library is fatal to the whole
+ * instance, and a caller has to design around that rather than assume a net
+ * that is not there.
  *
  * It writes a message to `stderr` on the way past, because that is what a
  * Rust panic does and suppressing it would mean installing a process-global

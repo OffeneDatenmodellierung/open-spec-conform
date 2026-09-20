@@ -718,8 +718,21 @@ deliberate leak goes unreported there even with `detect_leaks=1`. So a macOS
 developer gets the invalid-access half and not the unreleased-memory half.
 `tools/sanitise/run.sh` runs what is present, builds two programs that are
 *supposed* to fail so that a clean run cannot be a checker that silently did not
-run, and exits non-zero if nothing ran. The valgrind arm runs in CI on Linux,
-which is where the leak claim is made. See `tools/sanitise/README.md`.
+run, and exits non-zero if nothing ran. Both arms have since been run on Linux —
+valgrind clean, ASan clean, both controls caught — and both halves of the
+criterion are now met. See `tools/sanitise/README.md` for what was measured on
+which host, and for the two defects the first version of that harness had.
+
+**On the panic net, and the one place it does not exist.** §5.1's "a panic
+becomes an error code, never an unwind across the FFI boundary" holds only on a
+target that unwinds. Phase 7 built `conform-ffi` for `wasm32-unknown-unknown`
+and called it from Node: `conform_version()` returned `"0.1.0"`, so the ABI is
+sound there, and `conform_self_test_panic()` trapped with `unreachable`, because
+that target is `panic = "abort"` and there was nothing to catch. That is the
+self-test doing exactly its job — it fired on the first real target and stopped a
+demo shipping on an assumption that was false there. Phase 7 must therefore treat
+a panic in the WASM binding as fatal to the instance and design around it, rather
+than inheriting a guarantee the C build has and it does not.
 
 ---
 

@@ -34,12 +34,61 @@ they do:
 | Control | What it does | Required verdict |
 |---|---|---|
 | `negative_control.c` | frees a library string twice | must be caught, in both arms |
-| `leak_control.c` | never frees a library string | must be caught under valgrind; **measured, not required**, under ASan |
+| `leak_control.c` | never frees a library string | must be caught under valgrind, and under ASan on a platform where LeakSanitizer exists; **measured, not required**, where it does not |
 
-If the double-free control exits cleanly, `run.sh` reports that the sanitiser
-is not live rather than reporting a pass. If nothing ran at all, it exits
-non-zero and says so, because an exit code of 0 there would be a claim nobody
-made.
+Two rules follow, and both were learned the hard way (see below):
+
+1. **A control is only "caught" if the checker said so.** A non-zero exit
+   status is not the test. A binary that was never built exits 127; a program
+   that died for an unrelated reason exits non-zero too. The assertion is the
+   checker's own report in the log, and the exit status is at most
+   corroboration.
+2. **A control firing is a pass, and never contributes a failure.** That is
+   the whole point of a control, and it is why the verdict is counted from
+   recorded facts rather than propagated from each arm's return code.
+
+If nothing ran at all, `run.sh` exits non-zero and says so, because an exit
+code of 0 there would be a claim nobody made.
+
+## Two defects this harness had, and what they cost
+
+Both were found by CI on Linux after the first version of this script passed
+here on macOS, and both are the same shape: right on the machine they were
+written on.
+
+### The archive was on the wrong side of the source file
+
+```
+cc -I include libconform_ffi.a librustc_rt.asan.a smoke.c -o smoke   # wrong
+cc -I include smoke.c libconform_ffi.a librustc_rt.asan.a -o smoke   # right
+```
+
+GNU ld walks the command line once and pulls members out of an archive only to
+satisfy undefined symbols it has *already* seen, so an archive placed before
+the object that needs it contributes nothing. macOS's linker resolves archives
+regardless of position, so this was invisible here. On Linux every `conform_*`
+symbol came back undefined and all three instrumented binaries failed to link.
+
+### And nothing checked whether they had linked
+
+The script then ran files that did not exist. `set -euo pipefail` gave no
+protection, because bash suppresses errexit *entirely* inside a function
+invoked as `f || failed=1` — which is how the arms were called. The three
+failed link commands passed silently, the control "failed" with exit 127, and
+the run reported a confusing `the negative control failed, but not with an
+ASan report` a long way from the cause.
+
+Every command whose status matters is now checked explicitly, a failed link is
+a loud counted failure, and the `native-static-libs` list needed to link a
+Rust static library is asked for rather than guessed:
+
+```sh
+cargo rustc -p conform-ffi --lib --crate-type staticlib \
+    --message-format=json-render-diagnostics -- --print native-static-libs
+```
+
+which also says where the artefact is, so `CARGO_TARGET_DIR` and a different
+profile both work.
 
 ## What was actually run, and where
 
@@ -62,6 +111,27 @@ tools, and on the machine this was written on only one of them was possible.
     completion unreported. So this host verified *invalid accesses* and not
     *unreleased memory*, and `run.sh` prints that rather than rounding it up.
 
+### `aarch64-unknown-linux-gnu` (Debian 12, gcc 12.2, valgrind 3.19.0, rustc 1.98.1 + nightly)
+
+Run in a container on the same workstation, because CI was red and reading a
+CI log is not the same as being able to change one line and look again.
+
+- **valgrind: ran, clean.** The leak control was caught
+  (`definitely lost: 2,880 bytes in 1 blocks`) and the smoke test was clean.
+- **AddressSanitizer: ran, clean.** The double-free control was caught, the
+  smoke test was clean, and — unlike on macOS — the leak control was caught
+  too (`ERROR: LeakSanitizer: detected memory leaks`), because LeakSanitizer
+  is part of ASan on Linux and on by default.
+
+That last fact is why the ASan leak assertion is chosen by platform rather than
+being a `probe` everywhere: where leak checking exists, a control that does not
+fire is a broken harness and fails; where it does not exist, the same miss is a
+fact about the host. Both halves were measured, not assumed.
+
+Note the arch: this is `aarch64` Linux rather than CI's `x86_64`. The defects
+found were in shell accounting and linker argument order, neither of which is
+architecture-specific.
+
 ### The C side is not instrumented on macOS, and why
 
 Apple's clang and rustc ship different, mutually exclusive ASan runtimes: an
@@ -72,7 +142,7 @@ fails at the linker, and linking either alone leaves the other's objects
 unsatisfied.
 
 `run.sh` therefore compiles the C plainly and instruments only the Rust. What
-that costs is instrumentation of loads and stores in the smoke program's own
+that costs is instrumentation of loads and stores in the C program's own
 frames. What it keeps is the whole heap: the sanitiser's `malloc`/`free`
 interceptors are process-wide once the runtime is loaded, and every allocation
 this library hands a caller is on that heap — which is where an FFI ownership
@@ -87,9 +157,8 @@ where it works; it is not worth faking where it does not.
 ### Linux CI
 
 `.github/workflows/ci.yml` has a `sanitise` job on `ubuntu-latest` that runs
-this same script. That is where the valgrind arm runs, and it is where the
-leak claim gets made, because valgrind's leak check needs no instrumentation
-and is not optional.
+this same script. That is where the valgrind arm runs in CI, and it is where
+the leak claim gets made for every pull request.
 
 ## Build output
 

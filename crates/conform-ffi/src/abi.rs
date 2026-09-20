@@ -39,6 +39,19 @@
 //! function and getting `CONFORM_STATUS_PANIC` back is the proof; a process
 //! that dies instead is the diagnosis.
 //!
+//! That is not hypothetical. Phase 7 built this crate for
+//! `wasm32-unknown-unknown`, instantiated it in Node and called it:
+//! `conform_version()` returned `"0.1.0"`, so the ABI itself works there —
+//! and `conform_self_test_panic()` trapped with `unreachable`, because that
+//! target is `panic = "abort"` and there was no unwind to catch. **The panic
+//! net requires an unwinding target.** On one that aborts, every entry point
+//! below still checks its pointers and still returns its status codes, but a
+//! panic anywhere inside takes the whole instance down, and no amount of
+//! `catch_unwind` changes that. A binding for such a target has to treat a
+//! panic as fatal and design around it — which is what the self-test is for:
+//! it tells you which world you are in on the first call rather than on the
+//! first bug.
+//!
 //! # What the handle guard can and cannot catch
 //!
 //! A [`ConformValidator`] carries a guard word at offset zero. Every call that
@@ -502,9 +515,16 @@ pub unsafe extern "C" fn conform_validator_free(validator: *mut ConformValidator
 /// Panics on purpose, catches it, and returns `CONFORM_STATUS_PANIC`. A
 /// binding should call this once at start-up: getting that code back is proof
 /// that the library it linked was built with unwinding and that the net under
-/// every other entry point is real. A process that *dies* here has linked a
-/// `panic = "abort"` build, in which case no entry point in this library is
-/// safe to call from C and the only fix is to rebuild it.
+/// every other entry point is real.
+///
+/// A process that *dies* here — aborts, or traps — has linked a build with
+/// `panic = "abort"`, where there is no unwinding for `catch_unwind` to
+/// catch. `wasm32-unknown-unknown` is such a target, and this function traps
+/// with `unreachable` there. That is the honest answer rather than a
+/// malfunction: in such a build the pointer checks and the status codes still
+/// work, but a panic anywhere inside this library is fatal to the whole
+/// instance, and a caller has to design around that rather than assume a net
+/// that is not there.
 ///
 /// It writes a message to `stderr` on the way past, because that is what a
 /// Rust panic does and suppressing it would mean installing a process-global

@@ -76,8 +76,16 @@ That defence has a prerequisite the linker does not check: a `panic = "abort"`
 build has no unwinding to catch. `conform_self_test_panic()` is how a binding
 proves the net is real in the library it actually linked — it returns
 `CONFORM_STATUS_PANIC` (and prints a Rust panic message to stderr on the way).
-A process that *dies* there has linked an abort build, and nothing in this
-library is safe to call from C in that build.
+A process that *dies* there has linked an abort build.
+
+**The net requires an unwinding target, and that is not hypothetical.** Phase 7
+built this crate for `wasm32-unknown-unknown` and called it from Node:
+`conform_version()` returned `"0.1.0"`, so the ABI works there — and
+`conform_self_test_panic()` trapped with `unreachable`, because that target is
+`panic = "abort"`. In such a build the pointer checks and the status codes are
+still real, but a panic anywhere inside is fatal to the whole instance and a
+caller has to design around it. The self-test is how you find out which world
+you are in on the first call rather than on the first bug.
 
 ## The header
 

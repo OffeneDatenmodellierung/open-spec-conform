@@ -40,7 +40,11 @@
 //! [`abi::conform_last_error`]. Unwinding through a C frame is undefined
 //! behaviour, and a library that can do it is a library that can take its host
 //! process down for a bug in a diagnostic message. [`abi::conform_self_test_panic`]
-//! lets a binding prove the net is there in the build it linked.
+//! lets a binding prove the net is there in the build it linked — and it is
+//! not always there: the net needs an *unwinding* target, and on a
+//! `panic = "abort"` one such as `wasm32-unknown-unknown` that function traps
+//! rather than returning. See [`abi`] for what that costs and what it does
+//! not.
 //!
 //! # Where the `unsafe` is
 //!
