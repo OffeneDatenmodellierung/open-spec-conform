@@ -1,0 +1,13 @@
+# NOT an ODCS document, and included on purpose — the second branch of the
+# same sniffing condition in `validate_odcs_internal`: a document with `name`
+# and `columns` but no `apiVersion`, `kind` or `schema` is silently rerouted to
+# the ODCL schema.
+#
+# As with the sibling fixture, this crate gives the ODCS verdict it was asked
+# for. The disagreement is recorded and explained, not suppressed.
+name: orders
+columns:
+  - name: order_id
+    type: string
+  - name: ordered_at
+    type: timestamp

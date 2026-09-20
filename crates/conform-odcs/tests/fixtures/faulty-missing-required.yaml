@@ -1,0 +1,7 @@
+# Three of the five required properties are absent: `version`, `id`, `status`.
+#
+# The pre-existing `validate_odcs_internal` reports exactly one of them,
+# because `jsonschema`'s `validate` short-circuits and a `Result<(), String>`
+# has nowhere to put the other two. This crate reports three.
+apiVersion: v3.1.0
+kind: DataContract

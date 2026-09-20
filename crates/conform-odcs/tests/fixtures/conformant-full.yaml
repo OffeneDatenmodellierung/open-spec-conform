@@ -1,0 +1,74 @@
+# A realistic contract exercising the parts of the schema a minimal document
+# never reaches: servers with their per-type constraints, a nested schema
+# object with properties, a team object, and a description.
+#
+# This one should produce no errors and no warnings at all — the control that
+# proves the hygiene rules are not simply always firing.
+version: 2.3.0
+apiVersion: v3.1.0
+kind: DataContract
+id: 4b1f0f0e-2bb8-4a9d-9c17-4a4cbe3f2f2a
+name: Orders
+tenant: RetailCorp
+domain: sales
+dataProduct: order-analytics
+status: active
+description:
+  purpose: Serve completed retail orders to downstream analytics.
+  usage: Read-only. Partitioned by order date.
+  limitations: Cancelled orders are excluded.
+tags:
+  - sales
+  - gold
+servers:
+  - server: orders-prod
+    type: postgresql
+    host: db.example.com
+    port: 5432
+    database: retail
+    schema: public
+    environment: prod
+    description: Production read replica.
+schema:
+  - name: orders
+    logicalType: object
+    physicalName: orders_v2
+    physicalType: table
+    description: One row per completed order.
+    properties:
+      - name: order_id
+        logicalType: string
+        physicalType: uuid
+        primaryKey: true
+        primaryKeyPosition: 1
+        required: true
+        unique: true
+        description: Stable identifier for the order.
+      - name: ordered_at
+        logicalType: date
+        physicalType: timestamp
+        required: true
+        description: When the order was placed, UTC.
+      - name: total_minor_units
+        logicalType: integer
+        physicalType: bigint
+        required: true
+        description: Order total in the smallest currency unit.
+team:
+  name: Retail Data Platform
+  description: Owns the retail data contracts.
+  members:
+    - username: ceastwood
+      name: Charlie Eastwood
+      role: Data Product Owner
+      dateIn: 2025-04-01
+support:
+  - channel: '#retail-data'
+    url: https://example.slack.com/archives/C0000000000
+    tool: slack
+    scope: interactive
+slaProperties:
+  - property: latency
+    value: 4
+    unit: h
+    driver: analytics

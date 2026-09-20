@@ -1,0 +1,19 @@
+# NOT an ODCS document, and included on purpose.
+#
+# `validate_odcs_internal` sniffs its input before validating: if the document
+# carries a `dataContractSpecification` key it silently validates it against
+# the *ODCL* schema instead, and reports the result as if it had validated an
+# ODCS document. This fixture takes that branch.
+#
+# This crate does not sniff. It was asked for an ODCS verdict and it gives one:
+# this document is not a conformant ODCS contract, and it says so.
+#
+# The two therefore disagree on this document, and the disagreement is recorded
+# in `tests/oracle/odcs-verdicts.json` with this rationale rather than
+# suppressed. See `tests/oracle_agreement.rs`.
+dataContractSpecification: 1.1.0
+id: urn:datacontract:retail:orders
+info:
+  title: Orders
+  version: 0.0.1
+  owner: Retail Data Platform

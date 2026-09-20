@@ -1,0 +1,57 @@
+[package]
+name = "conform-odps"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011). For this crate the
+# upstream is the Open Data Product Standard, which is a *different* document
+# on a *different* cadence from the contract standard its sibling crate tracks
+# — which is why these are two crates and not one with a feature flag.
+version = "0.1.0"
+
+description = "Diagnostic-rich conformance validation for Open Data Product Standard documents: many located, coded, severity-bearing findings per document, against a schema whose provenance is enforced."
+readme = "README.md"
+keywords = ["odps", "data-product", "conformance", "validation", "diagnostics"]
+categories = ["development-tools", "development-tools::testing"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[dependencies]
+# The shared vocabulary. Every finding this crate raises is one of its
+# `Diagnostic`s, which is the entire point: a caller renders an ODPS failure
+# through the same path as any other conformance failure.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
+# Where the schema comes from, and the proof that it is still the bytes it
+# claims to be. This matters more here than anywhere else in the estate: the
+# ODPS schema is the artefact that was vendored as `…-latest.json` with no
+# version, no source URL and no fetch date, and is the defect that motivated
+# `conform-registry`. This crate resolves through the registry so that history
+# cannot repeat quietly.
+conform-registry = { path = "../conform-registry", version = "0.1.0" }
+
+# The schema is JSON Schema 2019-09 (`$schema` in the vendored document says
+# so). `default-features = false` drops the `reqwest`-backed remote-reference
+# retriever: nothing here touches the network.
+jsonschema = { version = "0.38", default-features = false }
+
+# The document model both the schema validator and the hygiene rules read.
+serde_json = "1"
+
+# ODPS documents are YAML in practice. `serde_norway` is the maintained fork of
+# `serde_yaml` 0.9 — the same libyaml lineage the pre-existing validator in
+# `data-modelling-sdk` parses with, which is what makes the differential test in
+# `tests/oracle_agreement.rs` a comparison of *rules* rather than of two
+# unrelated YAML parsers. `serde_yaml` itself is unmaintained and drags in
+# `yaml-rust`, which `cargo deny` rejects (RUSTSEC-2024-0320).
+serde_norway = "0.9"
+
+[lints]
+workspace = true
