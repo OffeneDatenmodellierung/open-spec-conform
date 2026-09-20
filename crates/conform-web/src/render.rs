@@ -529,16 +529,38 @@ fn crate_row(out: &mut String, member: &CrateEntry) {
 fn demo(out: &mut String, site: &Site) {
     out.push_str("<section id=\"try\">\n<h2>Validate in the browser</h2>\n");
     match &site.demo {
-        Demo::NotWired { because } => {
+        Demo::NotWired { because, evidence } => {
             let _ = writeln!(
                 out,
                 "<p class=\"not-wired\"><strong>Not in this build.</strong> {}</p>",
                 for_html(because),
             );
+
+            out.push_str("<h3>What was built and run to find that out</h3>\n");
             out.push_str(
-                "<p>Until it is, the same check runs from a terminal against a checkout, where \
-                 the registry and the vendored bytes are both on disk and the digest is verified \
-                 before any verdict is issued.</p>\n",
+                "<p>A claim about what a build does is worth what was run to establish it. \
+                 Every row below is a measurement taken against this repository, not an \
+                 inference from reading the code.</p>\n",
+            );
+            out.push_str("<div class=\"scroller\">\n<table class=\"evidence\">\n<thead><tr>");
+            for heading in ["Probe", "Result"] {
+                let _ = write!(out, "<th scope=\"col\">{}</th>", for_html(heading));
+            }
+            out.push_str("</tr></thead>\n<tbody>\n");
+            for (probe, result) in evidence {
+                let _ = writeln!(
+                    out,
+                    "<tr><th scope=\"row\"><code>{}</code></th><td>{}</td></tr>",
+                    for_html(probe),
+                    for_html(result),
+                );
+            }
+            out.push_str("</tbody>\n</table>\n</div>\n");
+
+            out.push_str(
+                "<p>Until it is wired, the same check runs from a terminal against a checkout, \
+                 where the registry and the vendored bytes are both on disk and the digest is \
+                 verified before any verdict is issued.</p>\n",
             );
             out.push_str(
                 "<pre><code>cargo run -p conform-cli -- registry list\n\
@@ -754,6 +776,8 @@ thead th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em
 .filter { display: flex; align-items: center; gap: 0.75rem; }
 .filter input { flex: 1; max-width: 26rem; padding: 0.5rem 0.75rem; font: inherit; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); color: var(--fg); }
 .not-wired { background: var(--absent-bg); border-left: 3px solid var(--absent); padding: 1rem 1.25rem; }
+.evidence th[scope="row"] { white-space: nowrap; padding-right: 1.25rem; }
+.evidence th[scope="row"] code { font-size: 0.8rem; }
 .not-a-link { border: 1px dashed var(--absent); }
 footer { padding: 2rem 1.25rem 4rem; color: var(--muted); font-size: 0.88rem; }
 @media (max-width: 40rem) {
