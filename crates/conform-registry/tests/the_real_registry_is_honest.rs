@@ -36,6 +36,9 @@ const KNOWN_GAPS: &[&str] = &[
     // First-party and unpublished: the `$id` in the document is an
     // `example.org` placeholder, not a resolvable address.
     "cads/homepage",
+    // Nothing in this estate records a documentation site for OKF: every
+    // reference to it is the GitHub repository URL already in `repository`.
+    "okf/homepage",
 ];
 
 #[test]
