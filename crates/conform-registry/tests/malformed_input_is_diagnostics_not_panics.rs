@@ -95,7 +95,11 @@ fn an_unknown_schema_version_is_refused_rather_than_guessed_at() {
     assert_eq!(diagnostic.code.as_str(), codes::SCHEMA_VERSION);
     assert!(diagnostic.help.is_some());
     assert_eq!(
-        diagnostic.location.pointer.as_ref().map(|p| p.as_str()),
+        diagnostic
+            .location
+            .pointer
+            .as_ref()
+            .map(conform_core::Pointer::as_str),
         Some("/schema_version")
     );
 }

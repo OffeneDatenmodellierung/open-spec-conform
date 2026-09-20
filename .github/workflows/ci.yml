@@ -80,3 +80,10 @@ jobs:
       # sole root of the graph, which is exactly the isolation wanted here.
       - name: cargo deny (conform-core in isolation)
         run: cargo deny --all-features --manifest-path crates/conform-core/Cargo.toml check
+
+      # conform-registry alone, for the same reason one step up: it is the
+      # first crate here to take third-party dependencies at all, so the
+      # licence and advisory gates need to see its tree as its own graph root
+      # rather than blended into the workspace's.
+      - name: cargo deny (conform-registry in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-registry/Cargo.toml check
