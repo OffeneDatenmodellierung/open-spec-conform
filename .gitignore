@@ -4,3 +4,12 @@ Cargo.lock.bak
 .DS_Store
 /node_modules
 /dist
+
+# `tools/oracle` is deliberately outside the workspace (see its README), so its
+# build artefacts are not covered by the `/target` line above. Its lock file is
+# not committed because it resolves against a sibling checkout of
+# `data-modelling-sdk` and would churn with that repository rather than with
+# this one; what pins the oracle for reproducibility is the SDK commit recorded
+# inside each generated verdicts file.
+/tools/oracle/target
+/tools/oracle/Cargo.lock
