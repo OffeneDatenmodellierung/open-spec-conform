@@ -75,8 +75,60 @@ The registry in §3 is a machine-readable generalisation of this file.
 
 ### 1.2 data-modelling-sdk — where ODCS/ODPS actually live
 
-Rust, with a `crates/` directory and a top-level `schemas/` directory holding
-**vendored JSON Schemas**:
+Rust, `crates/` layout, edition 2024, MIT, workspace version `2.4.0` — with
+`data-modelling-core` **already independently versioned at `2.0.6`**, a second
+precedent for the per-crate versioning this plan requires (§7.2).
+
+Three members: `crates/core` (`data-modelling-core`), `crates/odm` (the CLI),
+`crates/wasm` (`data-modelling-wasm` 2.4.0, `wasm-bindgen 0.2`).
+
+**Validators exist.** `crates/core/src/validation/` contains `input.rs`,
+`mod.rs`, `relationships.rs`, `schema.rs`, `tables.rs`, `xml.rs`, and
+`schema.rs` exports eighteen validator entry points:
+
+```rust
+pub fn validate_odcs_internal(content: &str) -> Result<(), String>   // schema.rs:33
+pub fn validate_odps_internal(content: &str) -> Result<(), String>   // schema.rs:208
+```
+
+…and the same shape for `odcl`, `cads`, `openapi`, `protobuf`, `avro`,
+`json_schema`, `sql`, `workspace`, `relationships`, `decision`, `knowledge`,
+`decisions_index`, `knowledge_index`, `sketch`, `sketch_index`, `dbmv`.
+
+`crates/odm/src/commands/validate.rs` wires them to a CLI:
+`handle_validate(format, input)` matches a format string and reads from a path
+or stdin via `-`.
+
+**Two structural defects make this the motivating case for `conform-core`:**
+
+1. **`Result<(), String>` discards everything a diagnostic needs.** One
+   stringly-typed error per document: no severity, no stable code, no location,
+   no way to report a second problem. A contract with twelve issues reports one
+   string. Nothing downstream can filter, group, sort, count by severity, or
+   link a finding to a spec clause — which is precisely the payload
+   `conform-core`'s `Diagnostic`/`Severity`/`Location`/`ConformanceReport`
+   exist to carry.
+2. **Feature-gated no-op stubs silently pass.** Every schema-backed validator is
+   duplicated under `#[cfg(not(feature = "schema-validation"))]`
+   (e.g. `schema.rs:80` for ODCS, `schema.rs:243` for ODPS) returning `Ok(())`
+   without inspecting the content. Build without the feature and validation
+   silently becomes a no-op that reports success. §5.3's "optional means
+   enforced, not stated" rule exists because of exactly this pattern.
+
+**Reference resolution already exists** in `crates/odm/src/reference.rs` —
+`resolve_local_reference`, `resolve_http_reference`, and a
+`resolve_reference(reference, source_file)` front door, with the HTTP arm
+itself cfg-stubbed (`reference.rs:84`). This is the direct precedent for
+`conform-core`'s three-way `Resolution`, and it should be lifted rather than
+reinvented.
+
+**Spec-driven development is the house process.** `crates/core/specs/` holds
+`001-odps-validation`, `001-wasm-exports`, `002-table-metadata`,
+`003-odcs-field-preservation`, `004-bpmn-dmn-openapi`,
+`005-databricks-sql-support`, `006-cli-wrapper` — numbered spec directories,
+the same convention this repo uses.
+
+A top-level `schemas/` directory holds the **vendored JSON Schemas**:
 
 - `schemas/odcs-json-schema-v3.1.0.json` — version-pinned in the filename
 - `schemas/odps-json-schema-latest.json` — **not pinned; "latest"**
@@ -112,34 +164,52 @@ from anything and has to be hand-maintained today.
 
 The ADR opens: *"Three conformance validators exist or are in flight under common
 ownership: ODM's ODCS validator, ODM's ODPS validator, and Roteiro's OKF
-validator."* The evidence only partly supports that.
+validator."* **The premise holds.** An earlier draft of this plan said it did
+not; that draft was wrong because it searched `data-modelling-sdk/src`, a path
+that does not exist — the code is under `crates/core/src/`. The corrected
+findings are in §1.2 and they change the shape of the work in three ways.
 
-1. **`open-data-modelling` is a Hugo documentation site, not a validator.** It
-   contains `hugo-site/`, `specs/`, `package.json` and Markdown content. There is
-   no Rust, no TypeScript validation code, and zero matches for `ODCS`/`ODPS` in
-   any `.rs`/`.ts`/`.py`/`.toml` file. Any assumption that a validator lives here
-   is wrong.
-2. **The ODCS/ODPS "validators" appear to be schema assets plus SDK
-   field-preservation logic, not standalone validators with their own diagnostic
-   types and CLIs.** `data-modelling-sdk/src` returned no matches for `valid`.
-   The vendored schemas and the `003-odcs-field-preservation` spec suggest
-   validation is currently JSON-Schema-driven inside the SDK rather than a
-   first-class validator.
-3. **Consequence for the plan.** Spec Scenario 2, FR-010 and SC-001 assume a
-   *pre-migration validator output* to differentially test against. If no such
-   validator exists for ODCS/ODPS, then that work is **greenfield construction,
-   not migration**, and the "differential test against pre-migration output"
-   acceptance criterion is unsatisfiable as written for those two formats.
+1. **`open-data-modelling` really is a Hugo documentation site, not a
+   validator.** `hugo-site/`, `specs/`, `package.json`, Markdown. No Rust, no
+   TypeScript validation code. This part of the earlier correction stands: no
+   validator lives here, and the ADR's "ODM's validator" means
+   `data-modelling-sdk`, not `open-data-modelling`.
 
-   Only **OKF** has a genuine migration path with a real regression oracle
-   (`tests/okf_interop.rs` + vendored upstream fixtures). This independently
-   confirms the spec's own OQ-002 recommendation to **do OKF first**, and
-   strengthens it from a preference into a constraint.
+2. **The migration oracle exists after all, for ODCS *and* ODPS.** Eighteen
+   `validate_*_internal` functions with a stable signature and a CLI on top of
+   them (§1.2) are exactly the *pre-migration validator output* that Spec
+   Scenario 2, FR-010 and SC-001 require. Differential testing is **satisfiable
+   as written**: drive both the old `Result<(), String>` function and the new
+   `conform-*` adapter over the same fixture corpus and assert the new one
+   flags a superset. Risk R1 is retired.
 
-**Action required:** before Phase 3 begins, either (a) confirm ODCS/ODPS
-validators exist somewhere not yet inspected, or (b) amend the ADR and spec to
-describe ODCS/ODPS as new-build adapters with schema-conformance fixtures as
-their oracle instead of differential tests.
+3. **The value proposition is stronger than "migration", and it folds back.**
+   These validators are not missing; they are *lossy*. They collapse an
+   arbitrary number of findings into one `String` and silently degrade to
+   `Ok(())` when a cargo feature is off. So `conform-core` is not re-plumbing
+   working code for tidiness — it recovers diagnostic information that is being
+   destroyed today, and every consumer of `data-modelling-core` gains
+   multi-diagnostic, severity-aware, located output the moment the adapter
+   lands. That is the "fold back into the other projects" return, and it
+   argues for doing ODCS/ODPS **early**, not last.
+
+**Consequences for sequencing.** OKF keeps its head start on quality of oracle
+(`tests/okf_interop.rs` + vendored upstream fixtures pinned in
+`PROVENANCE.md`), so Phase 3 still does OKF first — but for the narrower reason
+that its fixture corpus is the best, not because ODCS/ODPS lack an oracle.
+Phase 5 is unblocked and its acceptance criterion is unchanged.
+
+**Consequences for scope.** The estate validates far more than ODCS/ODPS/OKF:
+ODCL, CADS, OpenAPI, Protobuf, Avro, JSON Schema, SQL, DBMV, plus first-party
+`workspace`/`decision`/`knowledge`/`sketch` documents. `conform-core`'s
+`Validator` trait and the `specs.toml` registry must therefore be sized for
+**~18 formats, not 4**. §2.2 and §3.2 are written accordingly; the four named
+adapter crates are the first wave, not the whole set.
+
+**Two defects to fix on the way through**, both from §1.2 and both worth
+raising upstream independently of this workstream: the `odps-json-schema-latest.json`
+unpinned vendored schema, and the `cfg(not(feature = "schema-validation"))`
+stubs that report success without validating.
 
 ---
 
@@ -649,7 +719,9 @@ Phase 1 will surface. Do not start Phase 5 before Phase 3 completes; if
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | ODCS/ODPS validators do not exist, so FR-010's differential testing is unsatisfiable | §1.4 — resolve before Phase 5; amend ADR if confirmed |
+| R1 | ~~ODCS/ODPS validators do not exist~~ **RETIRED** — eighteen `validate_*_internal` fns found in `crates/core/src/validation/schema.rs`; differential testing is satisfiable | §1.2, §1.4 |
+| R1a | Adapters preserve the lossy `Result<(), String>` shape instead of emitting real multi-diagnostic output | Differential test asserts new output is a strict **superset**; a fixture with ≥2 distinct faults must yield ≥2 diagnostics |
+| R1b | `cfg(not(feature = "schema-validation"))` no-op stubs are copied into the new crates, reintroducing silent-pass | §5.3 rule; a compile-time test asserts no `conform-*` validator can be built into a configuration that returns success without inspecting input |
 | R2 | `conform-core` abstraction is wrong and only discovered at the fourth adapter | Phase 3 first (real oracle); treat 0.1.x as unstable; `semver_check` catches breaks |
 | R3 | Format leakage into `conform-core` | Automated grep gate (§2.1), not code review alone |
 | R4 | FFI dependencies leak into the harness tree | `cargo deny` run on `conform-core` in isolation (§5.3) |
@@ -668,7 +740,8 @@ Carried forward from the spec, plus new ones raised by this plan.
   than a preference (§1.4).
 - **OQ-003 — strict semver from first release.** *Resolved:* yes, enabled by
   per-crate versioning (§7.2).
-- **OQ-101 — Do ODCS/ODPS validators exist?** **Blocking for Phase 5.** §1.4.
+- **OQ-101 — Do ODCS/ODPS validators exist?** **RESOLVED: yes.** `crates/core/src/validation/schema.rs`. No longer blocking. §1.2.
+- **OQ-105 — How many formats does the first wave cover?** The estate validates ~18 formats (§1.4). The four named adapter crates are wave one; confirm whether ODCL/CADS/OpenAPI/Avro/Protobuf follow as separate crates or as features of a shared adapter crate.
 - **OQ-102 — Does `conform-okf` wrap `rto-okf-syntax` or absorb it?** The latter
   would let Roteiro delete a crate; the former is lower risk. Recommend wrap first.
 - **OQ-103 — Is `lexicon-core` in this repo or the MDM lexicon repo?** The spec
@@ -683,7 +756,7 @@ Carried forward from the spec, plus new ones raised by this plan.
 
 ## 11. What to review first
 
-1. **§1.4** — the ADR premise corrections. Everything in Phase 5 depends on this.
+1. **§1.2 and §1.4** — the corrected evidence base. The ADR premise *holds*; the earlier "validators are missing" finding was wrong and is retracted. The real finding is that they exist but are lossy.
 2. **§7.2** — per-crate versioning with `semver_check = true`, which deliberately
    inverts Roteiro's workspace default.
 3. **§6.2** — the SPA stack divergence from the existing Hugo site.
