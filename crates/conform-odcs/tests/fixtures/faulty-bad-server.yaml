@@ -1,0 +1,18 @@
+# Conformant at the root, faulty inside `servers`. Two separate entries are
+# each wrong in their own way, which is a case the single-string shape can
+# report only one of.
+#
+#   servers[0]: `type` is not one of the server types the schema enumerates
+#   servers[1]: `server` is absent, and `port` is a string, not an integer
+version: 1.0.0
+apiVersion: v3.1.0
+kind: DataContract
+id: 0d7b0f54-6d76-4a5e-a6a4-1a5a0a6a34b1
+status: active
+servers:
+  - server: warehouse
+    type: teradata
+  - type: oracle
+    host: localhost
+    port: "1523"
+    serviceName: retail

@@ -1,0 +1,7 @@
+# Not YAML at all: a mapping value opened and never closed.
+version: 1.0.0
+apiVersion: v3.1.0
+kind: DataContract
+servers: [ { server: "orders", type: "postgresql"
+id: 9f1c
+status: active

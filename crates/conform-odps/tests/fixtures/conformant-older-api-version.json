@@ -1,0 +1,14 @@
+{
+  "apiVersion": "v0.9.0",
+  "kind": "DataProduct",
+  "id": "5a2f1d3b-6e4c-4a8f-b0d1-9c8e7f6a5b43",
+  "name": "Legacy Orders",
+  "version": "0.3.0",
+  "status": "draft",
+  "description": {
+    "purpose": "JSON rather than YAML, because JSON is the subset of YAML this crate accepts without a separate code path and a fixture proves that where a sentence would only claim it. The apiVersion is the older one the schema still permits, so this document is conformant and warns under ODPS200."
+  },
+  "inputPorts": [{ "name": "raw", "version": "0.1.0", "contractId": "0d7b0f54-6d76-4a5e-a6a4-1a5a0a6a34b1" }],
+  "outputPorts": [{ "name": "legacy_orders", "version": "0.3.0" }],
+  "team": { "name": "Legacy Owners" }
+}

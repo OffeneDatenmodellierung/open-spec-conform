@@ -1,0 +1,89 @@
+{
+  "fixtures": [
+    {
+      "detail": null,
+      "fixture": "conformant-full.yaml",
+      "sha256": "2963309a2144a81cf9f1d66a7243b96512e8b4ef232b4521d2b195c40d9bc4e9",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-minimal.yaml",
+      "sha256": "442b6cea134947d6408986cdef1c3674dac60aeadb47a1bff5e91400f2ba5374",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-older-api-version.json",
+      "sha256": "99a552ba8cda1d6fb08ac5b6fd2c3f6d9f315285f2c77de1eb2db2537e4e5e45",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-unconventional-status.yaml",
+      "sha256": "02753053d23ea9b6b3f9a59a62989533a525069875d0b1efa1734ec7b5a2c0d3",
+      "verdict": "ok"
+    },
+    {
+      "detail": "ODPS validation failed at path '/inputPorts/0': \"contractId\" is a required property",
+      "fixture": "faulty-bad-ports.yaml",
+      "sha256": "5d046bd57a9d40752019b9774d3d0f0d2f960b5885a71332e45f8106018abac2",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODPS validation failed at path 'root': null is not of type \"object\"",
+      "fixture": "faulty-empty.yaml",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODPS validation failed at path '/apiVersion': \"v2.0.0\" is not one of \"v0.9.0\" or \"v1.0.0\"",
+      "fixture": "faulty-many-faults.yaml",
+      "sha256": "3ad556b826b43c829f4098a3f4cbf7189a8a3cbfd270074b569f8ba92c531e65",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODPS validation failed at path 'root': \"id\" is a required property",
+      "fixture": "faulty-missing-required.yaml",
+      "sha256": "fecded4d93e9a0708aeda831f265a8e8091a423eea2efe143823493f1aad699b",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODPS validation failed at path 'root': null is not of type \"object\"",
+      "fixture": "faulty-only-comments.yaml",
+      "sha256": "99662809dff392867745d1a4c2c39df972e5bb39e290de0a50fbd8a3bd119d27",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODPS validation failed at path 'root': \"order-analytics\" is not of type \"object\"",
+      "fixture": "faulty-root-not-an-object.yaml",
+      "sha256": "de8b7e4f850452b0ec99a8ac230b5a8d735e6580da6d1b02337d324e1a3eec2f",
+      "verdict": "err"
+    },
+    {
+      "detail": "Failed to parse YAML: did not find expected ',' or '}' at line 5 column 1, while parsing a flow mapping at line 4 column 16",
+      "fixture": "faulty-unparseable.yaml",
+      "sha256": "5afd7210f1f70de232cf6f72e9499a9c95771e74f1ce6bd1ef2eb8f299837b9f",
+      "verdict": "err"
+    }
+  ],
+  "how_to_regenerate": "cargo run --manifest-path tools/oracle/Cargo.toml",
+  "oracle": {
+    "crate": "data-modelling-core",
+    "crate_version": "2.4.0",
+    "features": [
+      "schema-validation"
+    ],
+    "function": "data_modelling_core::validation::schema::validate_odps_internal",
+    "schema_it_reads": "schemas/odps-json-schema-latest.json",
+    "schema_it_reads_sha256": "95ae53a90d85d17666b6a28d22ea5fff20313048fded5b92599546efe0589e14",
+    "source_commit": "22c9c2183d7641306ff42f7cd5c34540ece22715",
+    "source_repository": "data-modelling-sdk"
+  },
+  "recorded_by": "tools/oracle",
+  "schema_version": 1,
+  "vendored_schema": {
+    "path": "schemas/odps-json-schema-v1.0.0.json",
+    "sha256": "95ae53a90d85d17666b6a28d22ea5fff20313048fded5b92599546efe0589e14"
+  }
+}
