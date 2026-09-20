@@ -210,6 +210,42 @@ visible without the verdict moving.
 
 ---
 
+### Orchestrator corroboration, and a one-line fix the finding under-called
+
+Verified independently against `data-modelling-sdk/schemas/odcl-json-schema-1.2.1.json`:
+`$schema` is `http://json-schema.org/draft-07/schema#`, and `properties.servers.additionalProperties`
+has exactly the keys `["$ref", "allOf"]`, where `allOf` holds **19 branches, all of them `if`/`then`**.
+Under draft-07 `$ref` suppresses every sibling keyword, so all 19 are dead. The finding is exact.
+
+There is a further fact that makes the cause plainer and the repair cheaper. **The schema also uses
+`$defs`, which is not a draft-07 keyword at all** — it was introduced in 2019-09, where draft-07
+spells the same thing `definitions`. The file carries 22 `$defs` entries and 25 `#/$defs/`
+references, and zero `#/definitions/` references. So the document is written in 2019-09 vocabulary
+throughout while declaring draft-07.
+
+The estate's own files show this is an outlier rather than a house style:
+
+| Vendored schema | Declares | Uses |
+|---|---|---|
+| `odcs-json-schema-v3.1.0.json` | 2019-09 | `$defs` |
+| `odps-json-schema-latest.json` | 2019-09 | `$defs` |
+| `common-types-schema.json`, `dbmv`, `domain`, `system`, `workspace` | draft-07 | `definitions` |
+| **`odcl-json-schema-1.2.1.json`** | **draft-07** | **`$defs`** |
+| `knowledge-schema.json` | draft-07 | `$defs` |
+
+Every other file is internally consistent. ODCL's `$schema` declaration is simply stale, and the
+repair is one line — declare 2019-09, as its ODCS and ODPS siblings already do. That single change
+makes `$defs` a recognised keyword *and* un-deadens all 19 branches, because 2019-09 permits `$ref`
+to have siblings. This is corroborated by the adapter's own control experiment, which observed the
+`allOf` firing under 2019-09 with the `$ref` left in place.
+
+`knowledge-schema.json` has the same draft-07-plus-`$defs` inconsistency and should be checked for
+the same class of silently-dead subschema.
+
+Deciding the fix is upstream's call, not ours: bumping `$schema` will start rejecting documents that
+are accepted today, which is correct but is not a patch release. Reporting it as `ODCL304` info
+rather than enforcing it unilaterally remains the right call for 0.1.0.
+
 ## F-006 — `validate_odcs_internal`'s sniffing is now removable
 
 **Repository:** `data-modelling-sdk`
