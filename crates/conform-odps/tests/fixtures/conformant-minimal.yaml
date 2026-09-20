@@ -1,0 +1,12 @@
+# The smallest document the published ODPS v1.0.0 schema accepts: the four
+# properties it lists as `required`, and nothing else.
+#
+# Conformant, and still worth several warnings — it has no output port, no
+# input port, no team, no description and no version. Every one of those is
+# something the schema's own prose asks for and its `required` list does not.
+# That gap is the whole reason this crate has a hygiene band separate from its
+# error band.
+apiVersion: v1.0.0
+kind: DataProduct
+id: 3f9b8b41-0f2c-4f75-a15e-f6b1f2c6a4d9
+status: active

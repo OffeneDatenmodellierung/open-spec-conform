@@ -1,0 +1,13 @@
+{
+  "version": "0.4.1",
+  "apiVersion": "v3.0.0",
+  "kind": "DataContract",
+  "id": "fd8f2d66-63cb-4a12-9b2b-c9d6ba4f0d6c",
+  "status": "draft",
+  "description": {
+    "purpose": "JSON rather than YAML, because JSON is the subset of YAML this crate accepts without a separate code path and a fixture proves that where a sentence would only claim it. The apiVersion is one the schema still permits, so this document is conformant and warns under ODCS200. The root is a closed object, so there is nowhere to put a comment key -- hence this note living in the description."
+  },
+  "servers": [{ "server": "legacy", "type": "local", "path": "./data/*.parquet", "format": "parquet" }],
+  "schema": [{ "name": "orders", "logicalType": "object" }],
+  "team": { "name": "Legacy Owners" }
+}

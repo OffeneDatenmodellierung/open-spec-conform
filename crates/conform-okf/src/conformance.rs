@@ -105,7 +105,7 @@ impl Validator for OkfConformance {
         check_circular_derivation(&mut cx, bundle);
         check_stale_indexes(&mut cx, bundle);
 
-        cx.finish().into_iter().collect()
+        cx.finish()
     }
 }
 

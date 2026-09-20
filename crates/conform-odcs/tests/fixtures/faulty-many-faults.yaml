@@ -1,0 +1,20 @@
+# Deliberately many independent faults, of several different classes. This is
+# the fixture behind `tests/more_than_one_problem.rs`: the capability a
+# `Result<(), String>` cannot express is reporting all of these at once.
+#
+#   1. `version` is required and absent                        -> ODCS101
+#   2. `kind` is `DataProduct`, and the enum permits only
+#      `DataContract`                                          -> ODCS103
+#   3. `apiVersion` is `v9.9.9`, which is not in the enum       -> ODCS103
+#   4. `id` is a number where the schema requires a string      -> ODCS104
+#   5. `contract_status` is not a property the schema knows     -> ODCS102
+#   6. `servers[0]` is missing both `server` and `type`         -> ODCS101
+#   7. `tags` is a string where the schema requires an array    -> ODCS104
+apiVersion: v9.9.9
+kind: DataProduct
+id: 4815162342
+status: active
+contract_status: active
+tags: sales
+servers:
+  - description: A server entry that says nothing about which server it is.

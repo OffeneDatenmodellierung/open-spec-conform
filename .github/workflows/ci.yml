@@ -96,3 +96,15 @@ jobs:
       # would not stand out.
       - name: cargo deny (conform-okf in isolation)
         run: cargo deny --all-features --manifest-path crates/conform-okf/Cargo.toml check
+
+      # And the two schema-driven adapters, each as its own graph root. These
+      # are the first crates here to take a JSON Schema implementation and a
+      # YAML parser, so a licence or advisory problem in either arrives
+      # through them; seeing their trees separately is what keeps "which
+      # crate brought that in?" answerable without reading a blended
+      # workspace graph.
+      - name: cargo deny (conform-odcs in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-odcs/Cargo.toml check
+
+      - name: cargo deny (conform-odps in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-odps/Cargo.toml check

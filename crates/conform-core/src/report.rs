@@ -148,6 +148,51 @@ impl ConformanceReport {
         self.diagnostics.push(diagnostic);
     }
 
+    /// Reorder the diagnostics for reading: errors first, then warnings, then
+    /// info.
+    ///
+    /// The convention every adapter in this family reports in, kept here so
+    /// there is one copy of it rather than one per crate. It is
+    /// format-agnostic — nothing about it knows what was validated — which is
+    /// the test for whether a shared rule belongs in this crate at all.
+    ///
+    /// Note that this is **descending** by severity, the opposite of
+    /// [`Severity`]'s own ascending [`Ord`]. That ordering is ascending so
+    /// that [`worst_severity`](Self::worst_severity) can be a plain `max()`; a
+    /// reader wants the worst thing at the top. Both orders are wanted, so
+    /// neither is derived from the other.
+    ///
+    /// **The sort is stable**, which is the half that matters in practice: two
+    /// findings of the same severity keep the order the validator produced
+    /// them in, so a report stays comparable against the last run rather than
+    /// reshuffling on every unrelated change.
+    ///
+    /// Sorting is a separate act from pushing, never a property of the report.
+    /// A validator whose production order is itself meaningful — one that
+    /// opens with a provenance note, say — simply does not call this, and
+    /// nothing else in this crate reorders diagnostics behind its back.
+    ///
+    /// ```
+    /// use conform_core::{ConformanceReport, Diagnostic, Location, Severity};
+    ///
+    /// let mut report = ConformanceReport::new();
+    /// report.push(Diagnostic::info("XYZ001", Location::document("orders"), "read 3 documents"));
+    /// report.push(Diagnostic::warning("XYZ002", Location::document("orders"), "field name is shouty"));
+    /// report.push(Diagnostic::error("XYZ003", Location::document("orders"), "no version declared"));
+    /// report.push(Diagnostic::warning("XYZ004", Location::document("orders"), "no description"));
+    ///
+    /// report.sort_by_severity();
+    ///
+    /// let order: Vec<&str> = report.iter().map(|d| d.code.as_str()).collect();
+    /// // Errors, then warnings, then info — and the two warnings keep the
+    /// // order they were pushed in.
+    /// assert_eq!(order, ["XYZ003", "XYZ002", "XYZ004", "XYZ001"]);
+    /// ```
+    pub fn sort_by_severity(&mut self) {
+        self.diagnostics
+            .sort_by_key(|d| std::cmp::Reverse(d.severity));
+    }
+
     /// Absorb another report's diagnostics, in order.
     ///
     /// This is how a validator composes per-rule or per-document runs into one
