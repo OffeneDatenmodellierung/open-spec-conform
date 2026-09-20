@@ -38,11 +38,12 @@ conform-core = { path = "../conform-core", version = "0.1.0" }
 # the spec pane shows alongside the pin.
 conform-registry = { path = "../conform-registry", version = "0.1.0" }
 
-# The three adapters this binary drives. Each is resolved through the registry,
+# The four adapters this binary drives. Each is resolved through the registry,
 # so a schema that has drifted is refused before any verdict is issued.
-conform-odcs = { path = "../conform-odcs", version = "0.1.0" }
-conform-odps = { path = "../conform-odps", version = "0.1.0" }
-conform-okf  = { path = "../conform-okf",  version = "0.1.0" }
+conform-odcs    = { path = "../conform-odcs",    version = "0.1.0" }
+conform-odps    = { path = "../conform-odps",    version = "0.1.0" }
+conform-okf     = { path = "../conform-okf",     version = "0.1.0" }
+conform-lexicon = { path = "../conform-lexicon", version = "0.1.0" }
 
 # Argument parsing. `derive` so the command surface is a description of itself
 # rather than a hand-written match over `args_os`.
