@@ -87,3 +87,14 @@ jobs:
       # rather than blended into the workspace's.
       - name: cargo deny (conform-registry in isolation)
         run: cargo deny --all-features --manifest-path crates/conform-registry/Cargo.toml check
+
+      # And each format adapter as its own graph root. These are the first
+      # crates here to take a JSON Schema implementation and a YAML parser, so
+      # a licence or advisory problem in either arrives through them; seeing
+      # their trees separately is what keeps "which crate brought that in?"
+      # answerable without reading a blended workspace graph.
+      - name: cargo deny (conform-odcs in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-odcs/Cargo.toml check
+
+      - name: cargo deny (conform-odps in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-odps/Cargo.toml check

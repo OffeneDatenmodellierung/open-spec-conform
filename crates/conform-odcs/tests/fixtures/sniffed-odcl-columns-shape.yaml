@@ -1,10 +1,14 @@
 # NOT an ODCS document, and included on purpose — the second branch of the
-# same sniffing condition in `validate_odcs_internal`: a document with `name`
-# and `columns` but no `apiVersion`, `kind` or `schema` is silently rerouted to
-# the ODCL schema.
+# sniffing condition in `validate_odcs_internal`: a document with `name` and
+# `columns` but no `apiVersion`, `kind` or `schema` is silently rerouted to the
+# ODCL schema.
 #
-# As with the sibling fixture, this crate gives the ODCS verdict it was asked
-# for. The disagreement is recorded and explained, not suppressed.
+# The two validators reach the same VERDICT on this one (both fail) for
+# entirely different reasons: the oracle fails it as a malformed ODCL document
+# ("dataContractSpecification" is a required property), this crate fails it as
+# a malformed ODCS document (five required properties absent). Agreement by
+# coincidence is still agreement, so this fixture is not in the divergence
+# list — but the coincidence is why its sibling is.
 name: orders
 columns:
   - name: order_id
