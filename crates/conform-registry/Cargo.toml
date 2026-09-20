@@ -1,0 +1,46 @@
+[package]
+name = "conform-registry"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011).
+version = "0.1.0"
+
+description = "Machine-readable provenance for vendored specification artefacts: what upstream they came from, which immutable ref they are pinned to, and whether the local bytes still match."
+readme = "README.md"
+keywords = ["provenance", "registry", "conformance", "vendoring", "sha256"]
+categories = ["development-tools", "config"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[dependencies]
+# The whole dependency budget of this crate, and the reasoning for each line.
+#
+# `conform-core` is the point: malformed provenance is reported as the same
+# `Diagnostic` every validator in this family emits, not as a bare `String`.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
+# A TOML parser, because `specs.toml` is TOML. `default-features = false` drops
+# the serializer: this crate reads the registry and never writes it.
+toml = { version = "1", default-features = false, features = ["parse", "serde"] }
+
+# Deriving `Deserialize` on the registry types is what keeps the loader a
+# description of the file format rather than a hand-written walk over a
+# document tree. Already in the graph via `toml`, so it costs nothing extra.
+serde = { version = "1", default-features = false, features = ["std", "derive"] }
+
+# SHA-256 of the vendored bytes. Byte integrity is this crate's central claim,
+# and a hand-rolled compression function is the last thing a reviewer of a
+# provenance crate should have to audit; RustCrypto's implementation is the
+# de-facto standard one and is licence-clean under `deny.toml`.
+sha2 = { version = "0.11", default-features = false }
+
+[lints]
+workspace = true
