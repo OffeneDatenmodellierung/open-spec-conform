@@ -40,7 +40,12 @@ fn main() -> ExitCode {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
             }
-            _ => return usage(&format!("unexpected argument {}", argument.to_string_lossy())),
+            _ => {
+                return usage(&format!(
+                    "unexpected argument {}",
+                    argument.to_string_lossy()
+                ));
+            }
         }
     }
 

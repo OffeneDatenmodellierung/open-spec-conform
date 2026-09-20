@@ -76,7 +76,7 @@ use std::fmt::Write as _;
 /// use conform_web::escape::for_html;
 ///
 /// // Ordinary text is returned untouched, and not reallocated.
-/// assert!(matches!(for_html("Open Data Contract Standard"), std::borrow::Cow::Borrowed(_)));
+/// assert!(matches!(for_html("an ordinary sentence"), std::borrow::Cow::Borrowed(_)));
 ///
 /// // Markup cannot be smuggled through a registry note.
 /// assert_eq!(
@@ -89,7 +89,7 @@ use std::fmt::Write as _;
 ///
 /// // And a right-to-left override cannot reorder the rendered line, which
 /// // entity-encoding alone would not have prevented.
-/// assert_eq!(for_html("licence: \u{202e}detidua"), "licence: <U+202E>detidua");
+/// assert_eq!(for_html("licence: \u{202e}detidua"), "licence: &lt;U+202E&gt;detidua");
 /// ```
 #[must_use]
 pub fn for_html(text: &str) -> Cow<'_, str> {
@@ -103,12 +103,23 @@ pub fn for_html(text: &str) -> Cow<'_, str> {
             escaped.push_str(entity);
         } else if is_dangerous(character) {
             // `{:04X}` is the conventional spelling of a code point, and the
-            // angle brackets — themselves entity-encoded nowhere, because this
-            // text is the escaper's own output rather than the document's —
-            // let a reader tell an escape from a document that happens to
-            // contain the letters `U+202E`. Writing into a `String` cannot
-            // fail, so the result is deliberately discarded.
-            let _ = write!(escaped, "<U+{:04X}>", character as u32);
+            // angle brackets let a reader tell an escape from a document that
+            // happens to contain the letters `U+202E`.
+            //
+            // They are written **entity-encoded**, and an earlier version of
+            // this function did not, which was a defect of exactly the kind
+            // this module exists to prevent: `<U+202E>` written with literal
+            // angle brackets is parsed by a browser as a start tag named `u`
+            // with an attribute `+202e`. The escaper would have been injecting
+            // an element while neutralising an override. It was caught by
+            // `tests/hostile_text_cannot_become_markup.rs`, which walks the
+            // rendered page's tags rather than trusting this function — and it
+            // is the reason that test walks tags instead of counting them.
+            //
+            // A reader still sees `<U+202E>`; the browser sees text.
+            // Writing into a `String` cannot fail, so the result is
+            // deliberately discarded.
+            let _ = write!(escaped, "&lt;U+{:04X}&gt;", character as u32);
         } else {
             escaped.push(character);
         }
@@ -188,8 +199,14 @@ mod tests {
     fn ordinary_text_is_untouched_and_unallocated() {
         for sample in [
             "",
-            "Open Data Contract Standard",
-            "https://bitol.io/",
+            // Deliberately not a real specification name or a real upstream
+            // URL. `tests/no_spec_facts_are_written_in_the_source.rs` scans
+            // this file too, and it is right to: a registry value used as a
+            // convenient sample is the same transcription habit that puts a
+            // stale link on a page, and the rule is not worth having if it has
+            // an exception for test fixtures.
+            "an ordinary sentence",
+            "https://example.invalid/docs/",
             "Grüße aus München",
             "注文 — orders",
             "emoji are text: 🛰️",
@@ -217,7 +234,11 @@ mod tests {
         // yields `&amp;lt;`, and the reader is told the document held
         // characters it did not.
         assert_eq!(for_html("<"), "&lt;");
-        assert_eq!(for_html("&lt;"), "&amp;lt;", "a literal `&lt;` in a document");
+        assert_eq!(
+            for_html("&lt;"),
+            "&amp;lt;",
+            "a literal `&lt;` in a document"
+        );
         assert_eq!(for_html(&for_html("<")).len(), "&amp;lt;".len());
     }
 
@@ -227,14 +248,17 @@ mod tests {
         // markup-insignificant, so entity encoding alone leaves it in place
         // and the rendered page reads differently from the bytes behind it.
         for (raw, expected) in [
-            ("\u{202e}override", "<U+202E>override"),
-            ("\u{2066}isolate\u{2069}", "<U+2066>isolate<U+2069>"),
-            ("zero\u{200b}width", "zero<U+200B>width"),
-            ("\u{feff}bom", "<U+FEFF>bom"),
-            ("soft\u{ad}hyphen", "soft<U+00AD>hyphen"),
-            ("para\u{2029}separator", "para<U+2029>separator"),
-            ("\u{1b}[31mred", "<U+001B>[31mred"),
-            ("\u{7f}delete", "<U+007F>delete"),
+            ("\u{202e}override", "&lt;U+202E&gt;override"),
+            (
+                "\u{2066}isolate\u{2069}",
+                "&lt;U+2066&gt;isolate&lt;U+2069&gt;",
+            ),
+            ("zero\u{200b}width", "zero&lt;U+200B&gt;width"),
+            ("\u{feff}bom", "&lt;U+FEFF&gt;bom"),
+            ("soft\u{ad}hyphen", "soft&lt;U+00AD&gt;hyphen"),
+            ("para\u{2029}separator", "para&lt;U+2029&gt;separator"),
+            ("\u{1b}[31mred", "&lt;U+001B&gt;[31mred"),
+            ("\u{7f}delete", "&lt;U+007F&gt;delete"),
         ] {
             assert_eq!(for_html(raw), expected, "escaping {raw:?}");
         }
@@ -252,19 +276,17 @@ mod tests {
             .collect();
         let escaped = for_html(&hostile);
 
-        assert!(!escaped.contains('&') || escaped.contains("&amp;"));
         assert!(!escaped.chars().any(is_dangerous));
-        for forbidden in ['"', '\''] {
+
+        // Nothing that can open a tag or close an attribute survives, with no
+        // exception at all — not even for this module's own `<U+XXXX>`
+        // spelling, which is written with entities precisely so that this
+        // assertion can be unconditional. An earlier version carved out an
+        // exception here and the carve-out was hiding a real defect.
+        for forbidden in ['<', '>', '"', '\''] {
             assert!(
                 !escaped.contains(forbidden),
-                "{forbidden:?} can break out of an attribute",
-            );
-        }
-        // `<` and `>` survive only as the escaper's own code-point spelling.
-        for fragment in escaped.split("<U+") {
-            assert!(
-                !fragment.contains('<'),
-                "a `<` reached the output outside a `<U+XXXX>` escape",
+                "{forbidden:?} reached the output and can open a tag or end an attribute",
             );
         }
     }
@@ -277,6 +299,10 @@ mod tests {
         // that was. Length grows; it never shrinks.
         for raw in ["\u{202e}", "\u{1b}", "\u{200b}", "<", "&"] {
             assert!(for_html(raw).len() > raw.len(), "escaping {raw:?}");
+            assert!(
+                for_html(raw).contains("U+") || entity(raw.chars().next().unwrap()).is_some(),
+                "a neutralised character should be spelled out, not deleted",
+            );
         }
     }
 

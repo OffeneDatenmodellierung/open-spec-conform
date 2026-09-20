@@ -68,6 +68,13 @@ toml = { version = "1", default-features = false, features = ["parse", "serde"] 
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 
 [dev-dependencies]
+# `tests/absence_is_rendered_as_absence.rs` lifts the phrase `(not recorded)`
+# out of the console's *own* rendering rather than transcribing it, so that the
+# page and the console cannot drift apart on the one word this whole registry
+# is about. Building the console's `Run` to do that needs a `GatePolicy`.
+# Already in the graph.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
 # `tests/the_page_is_a_function_of_the_registry.rs` builds a registry whose
 # every value is fabricated and renders the page from it, which is how the
 # "nothing is hand-typed" claim is proved rather than asserted. That needs the

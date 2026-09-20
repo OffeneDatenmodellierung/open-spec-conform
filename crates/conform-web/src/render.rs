@@ -124,9 +124,9 @@ fn masthead(out: &mut String, site: &Site) {
 
 /// One figure in the masthead.
 fn stat(out: &mut String, label: &str, value: &str) {
-    let _ = write!(
+    let _ = writeln!(
         out,
-        "<div class=\"stat\"><dt>{}</dt><dd>{}</dd></div>\n",
+        "<div class=\"stat\"><dt>{}</dt><dd>{}</dd></div>",
         for_html(label),
         for_html(value),
     );
@@ -146,9 +146,9 @@ fn nav(out: &mut String) {
         ("crates", "The crates"),
         ("try", "Validate in the browser"),
     ] {
-        let _ = write!(
+        let _ = writeln!(
             out,
-            "<li><a href=\"#{0}\">{1}</a></li>\n",
+            "<li><a href=\"#{0}\">{1}</a></li>",
             for_html(anchor),
             for_html(label),
         );
@@ -204,12 +204,12 @@ fn what_this_is(out: &mut String, site: &Site) {
 /// The upstream watch — the table this page exists for.
 fn upstream_watch(out: &mut String, site: &Site) {
     out.push_str("<section id=\"watch\">\n<h2>Upstream watch</h2>\n");
-    let _ = write!(
+    let _ = writeln!(
         out,
         "<p>The canonical source for each vendored artefact, the immutable revision it was taken \
          at, and the digest of the bytes in the tree. Together these are what makes \
          &ldquo;has upstream changed?&rdquo; a question with an answer. Every value in this \
-         table is read from <code>{}</code>; none of it is written into this page.</p>\n",
+         table is read from <code>{}</code>; none of it is written into this page.</p>",
         for_html(&site.registry_path),
     );
     out.push_str(
@@ -256,7 +256,11 @@ fn watch_row(out: &mut String, card: &SpecCard) {
     upstream_cell(out, spec);
     out.push_str("</td>");
 
-    let _ = write!(out, "<td>{}</td>", code_or_absence(spec.pinned_ref.as_deref()));
+    let _ = write!(
+        out,
+        "<td>{}</td>",
+        code_or_absence(spec.pinned_ref.as_deref())
+    );
     let _ = write!(
         out,
         "<td><code class=\"digest\">{}</code></td>",
@@ -329,12 +333,12 @@ fn verify_badge(out: &mut String, status: VerifyStatus) {
 /// The catalogue: one card per entry, with everything the registry records.
 fn catalogue(out: &mut String, site: &Site) {
     out.push_str("<section id=\"specs\">\n<h2>The catalogue</h2>\n");
-    let _ = write!(
+    let _ = writeln!(
         out,
         "<p>Every entry in <code>{}</code>, in the order the file writes them. The \
          <em>notes</em> on each card are the registry's own words, shown in full: they record \
          which evidence dated the artefact, why a field is absent, and what is known to be \
-         uncertain. They are the most useful thing on this page.</p>\n",
+         uncertain. They are the most useful thing on this page.</p>",
         for_html(&site.registry_path),
     );
 
@@ -354,26 +358,30 @@ fn catalogue(out: &mut String, site: &Site) {
 /// One entry, in full.
 fn spec_card(out: &mut String, card: &SpecCard) {
     let spec = &card.summary;
-    let _ = write!(
+    let _ = writeln!(
         out,
-        "<article class=\"card\" id=\"spec-{}\" data-filter=\"{}\">\n",
+        "<article class=\"card\" id=\"spec-{}\" data-filter=\"{}\">",
         for_html(&spec.id),
         for_html(&filter_key(spec)),
     );
 
-    let _ = write!(
+    let _ = writeln!(
         out,
-        "<h3><code>{}</code> <span class=\"card-name\">{}</span></h3>\n",
+        "<h3><code>{}</code> <span class=\"card-name\">{}</span></h3>",
         for_html(&spec.id),
         for_html(&spec.name),
     );
 
     out.push_str("<p class=\"card-status\">");
     verify_badge(out, spec.verify);
-    let _ = write!(
+    let _ = writeln!(
         out,
-        " <span class=\"badge badge-{}\">{}</span></p>\n",
-        if spec.has_adapter { "adapter" } else { "no-adapter" },
+        " <span class=\"badge badge-{}\">{}</span></p>",
+        if spec.has_adapter {
+            "adapter"
+        } else {
+            "no-adapter"
+        },
         for_html(if spec.has_adapter {
             "a validator in this family checks documents against this"
         } else {
@@ -395,18 +403,18 @@ fn spec_card(out: &mut String, card: &SpecCard) {
     field(out, "vendored path", Some(&spec.vendored_path));
     field(out, "in tree since", Some(&spec.fetched_at));
 
-    let _ = write!(
+    let _ = writeln!(
         out,
-        "<div class=\"row\"><dt>sha256</dt><dd><code class=\"digest\">{}</code></dd></div>\n",
+        "<div class=\"row\"><dt>sha256</dt><dd><code class=\"digest\">{}</code></dd></div>",
         for_html(&spec.sha256),
     );
     out.push_str("</dl>\n");
 
     // The registry's own diagnostic for the re-hash, verbatim. A paraphrase
     // here would be a second opinion about bytes this page did not hash.
-    let _ = write!(
+    let _ = writeln!(
         out,
-        "<p class=\"diagnostic\"><code>{}</code> {}</p>\n",
+        "<p class=\"diagnostic\"><code>{}</code> {}</p>",
         for_html(spec.verify_diagnostic.code.as_str()),
         for_html(&spec.verify_diagnostic.message),
     );
@@ -450,11 +458,13 @@ fn notes(out: &mut String, notes: Option<&str>) {
         return;
     };
 
-    out.push_str("<details class=\"notes\" open><summary>Notes — the registry's own words</summary>\n");
+    out.push_str(
+        "<details class=\"notes\" open><summary>Notes — the registry's own words</summary>\n",
+    );
     for paragraph in notes.split("\n\n") {
         let paragraph = paragraph.trim();
         if !paragraph.is_empty() {
-            let _ = write!(out, "<p>{}</p>\n", for_html(paragraph));
+            let _ = writeln!(out, "<p>{}</p>", for_html(paragraph));
         }
     }
     out.push_str("</details>\n");
@@ -493,16 +503,20 @@ fn crate_row(out: &mut String, member: &CrateEntry) {
     let _ = write!(
         out,
         "<td><span class=\"badge badge-{}\">{}</span></td>",
-        if member.published { "adapter" } else { "no-adapter" },
+        if member.published {
+            "adapter"
+        } else {
+            "no-adapter"
+        },
         for_html(if member.published {
             "to crates.io"
         } else {
             "not published"
         }),
     );
-    let _ = write!(
+    let _ = writeln!(
         out,
-        "<td>{}</td><td><code>{}</code></td></tr>\n",
+        "<td>{}</td><td><code>{}</code></td></tr>",
         match member.description.as_deref() {
             Some(description) => for_html(description).into_owned(),
             None => absent_span(),
@@ -516,9 +530,9 @@ fn demo(out: &mut String, site: &Site) {
     out.push_str("<section id=\"try\">\n<h2>Validate in the browser</h2>\n");
     match &site.demo {
         Demo::NotWired { because } => {
-            let _ = write!(
+            let _ = writeln!(
                 out,
-                "<p class=\"not-wired\"><strong>Not in this build.</strong> {}</p>\n",
+                "<p class=\"not-wired\"><strong>Not in this build.</strong> {}</p>",
                 for_html(because),
             );
             out.push_str(
@@ -539,11 +553,11 @@ fn demo(out: &mut String, site: &Site) {
 /// Where the page came from.
 fn colophon(out: &mut String, site: &Site) {
     out.push_str("<footer>\n");
-    let _ = write!(
+    let _ = writeln!(
         out,
         "<p>Generated by <code>{}</code> {} from <code>{}</code> (registry format \
          {}) and the manifests under <code>crates/</code>. Every specification fact above is \
-         read from those files at build time; none of it is written into the generator.</p>\n",
+         read from those files at build time; none of it is written into the generator.</p>",
         for_html(env!("CARGO_PKG_NAME")),
         for_html(env!("CARGO_PKG_VERSION")),
         for_html(&site.registry_path),
@@ -554,9 +568,9 @@ fn colophon(out: &mut String, site: &Site) {
 
 /// One provenance row, present or honestly absent.
 fn field(out: &mut String, label: &str, value: Option<&str>) {
-    let _ = write!(
+    let _ = writeln!(
         out,
-        "<div class=\"row\"><dt>{}</dt><dd>{}</dd></div>\n",
+        "<div class=\"row\"><dt>{}</dt><dd>{}</dd></div>",
         for_html(label),
         match value {
             Some(value) => format!("<code>{}</code>", for_html(value)),

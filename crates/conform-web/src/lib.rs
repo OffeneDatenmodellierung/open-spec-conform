@@ -90,7 +90,10 @@ pub const PAGE_FILE: &str = "index.html";
 /// [`BuildError::Write`] if the output cannot be written. A page is never
 /// written from partial input: a catalogue missing an entry looks complete,
 /// which is the one failure a provenance page must not have.
-pub fn build(root: impl AsRef<Path>, out: impl AsRef<Path>) -> Result<std::path::PathBuf, BuildError> {
+pub fn build(
+    root: impl AsRef<Path>,
+    out: impl AsRef<Path>,
+) -> Result<std::path::PathBuf, BuildError> {
     let site = Site::gather(root).map_err(BuildError::Gather)?;
     let html = render::page(&site);
 

@@ -371,6 +371,7 @@ name = "conform-web"
 version = "0.1.0"
 dependencies = [
  "conform-cli",
+ "conform-core",
  "conform-registry",
  "serde",
  "toml",
