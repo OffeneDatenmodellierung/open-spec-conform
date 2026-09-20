@@ -114,6 +114,13 @@ cargo test -p conform-ffi --features c-smoke        # needs a C compiler on PATH
 cargo test -p conform-ffi --all-features            # both
 ```
 
+Both are self-sufficient from a clean checkout: neither needs a prior
+`cargo build`, and neither assumes an artefact somebody else happened to leave
+behind. The C smoke test asks cargo to build `libconform_ffi.a` and to say
+where it put it and what else to link against — `cargo test` on its own builds
+only the `rlib`, so anything that assumed otherwise passed on a warm tree and
+failed on a fresh clone.
+
 ## Licence
 
 MIT OR Apache-2.0, as the rest of the workspace.

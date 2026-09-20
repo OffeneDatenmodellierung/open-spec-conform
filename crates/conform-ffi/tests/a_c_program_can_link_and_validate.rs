@@ -10,8 +10,64 @@
 //! cleanly in the Rust tests and fail in the field.
 //!
 //! So this test hands `tests/smoke/conform_smoke.c` to `cc`, links it against
-//! the `cdylib` cargo just built, and runs it against this repository's own
-//! registry and a fixture from `conform-odcs`.
+//! `libconform_ffi.a`, and runs it against this repository's own registry and
+//! a fixture from `conform-odcs`.
+//!
+//! # It asks cargo for the library rather than assuming one is there
+//!
+//! This test used to look for the `cdylib` in `target/debug` and fail if it
+//! was absent, with a panic message that helpfully suggested running
+//! `cargo build` first. That message was the bug wearing a disguise: a test
+//! that tells you how to arrange the world before running it is a test with an
+//! ordering dependency it cannot satisfy.
+//!
+//! `cargo test` builds the lib target as an `rlib`, to link into the test
+//! binaries, and **nothing else** — no `cdylib`, no `staticlib`. On a warm
+//! tree one is lying around from an earlier `cargo build` and the test passes;
+//! on a clean checkout — which is what CI always is — there is no such file,
+//! and it does not. That is not a CI problem to be papered over with a build
+//! step, because the same trap catches every contributor running the
+//! documented command on a fresh clone.
+//!
+//! So the test asks cargo to produce the artefact, and asks cargo where it put
+//! it, with one invocation:
+//!
+//! ```text
+//! cargo rustc -p conform-ffi --lib --crate-type staticlib \
+//!     --message-format=json-render-diagnostics -- --print native-static-libs
+//! ```
+//!
+//! which answers both questions at once — the `compiler-artifact` record on
+//! stdout carries the exact path, and the `native-static-libs` note on stderr
+//! carries the system libraries a Rust `staticlib` has to be linked against on
+//! this platform. Neither is guessed. Hard-coding `libconform_ffi.a` and a
+//! per-OS list of `-lpthread -ldl -lm` would be two more things that are right
+//! only on the machine they were written on.
+//!
+//! Nesting cargo inside `cargo test` is safe here: by the time a test binary
+//! runs, the outer invocation has finished building and released the build
+//! directory, and every dependency the inner one needs is already compiled —
+//! so it relinks one crate and returns.
+//!
+//! # Why the `staticlib` and not the `cdylib`
+//!
+//! Because `crate-type` declares three artefacts and something should link
+//! each of them. The `rlib` is linked by every other test file here; the
+//! `staticlib` is linked by this one, which closes the gap left when this test
+//! took the `cdylib`. Embedding is also the harder of the two for a Rust
+//! library to get right, because it is the one where the *caller* has to
+//! supply the platform's own libraries — which is exactly what the
+//! `native-static-libs` note above exists to tell it.
+//!
+//! It costs no coverage. `--crate-type staticlib` narrows this invocation to
+//! the one artefact — `target/debug` holds `libconform_ffi.a` and nothing else
+//! after it — but `tools/sanitise/run.sh` runs a plain `cargo build -p
+//! conform-ffi`, which produces all three, and links the `cdylib` for its
+//! valgrind arm. So each declared crate-type is linked by something, by a
+//! different something, and neither has to trust the other to have run first.
+//!
+//! It also drops the `rpath` the dynamic version needed, so the compiled
+//! program is a single file that runs with no environment at all.
 //!
 //! # Why this test is behind a feature
 //!
@@ -38,40 +94,10 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// The directory cargo put this test binary's artefacts in.
-///
-/// Derived from the running test binary rather than assumed to be
-/// `target/debug`, so a `CARGO_TARGET_DIR`, a custom profile or a
-/// cross-compiled target directory all work without this file knowing about
-/// them.
-fn artefact_dir() -> PathBuf {
-    let exe = std::env::current_exe().expect("a test binary knows where it is");
-    exe.parent()
-        .and_then(Path::parent)
-        .expect("a test binary lives in <artefacts>/deps/")
-        .to_path_buf()
-}
-
-/// The shared library a C program links against.
-fn shared_library() -> PathBuf {
-    let dir = artefact_dir();
-    let candidates = [
-        "libconform_ffi.dylib",
-        "libconform_ffi.so",
-        "conform_ffi.dll",
-    ];
-    for name in candidates {
-        let path = dir.join(name);
-        if path.exists() {
-            return path;
-        }
-    }
-    panic!(
-        "no `conform-ffi` shared library in {}. The crate declares `crate-type = [\"cdylib\", \
-         \"staticlib\", \"rlib\"]`, so `cargo test -p conform-ffi --features c-smoke` should \
-         have built one; if it did not, `cargo build -p conform-ffi` first.",
-        dir.display()
-    );
+/// The cargo that is running this test, so the inner invocation is the same
+/// toolchain as the outer one rather than whatever is first on `PATH`.
+fn cargo() -> PathBuf {
+    std::env::var_os("CARGO").map_or_else(|| PathBuf::from("cargo"), PathBuf::from)
 }
 
 /// Which C compiler to use. `CC` if the environment names one, else `cc`.
@@ -79,41 +105,145 @@ fn compiler() -> String {
     std::env::var("CC").unwrap_or_else(|_| "cc".to_owned())
 }
 
+/// What it takes to link a C program against this library.
+#[derive(Debug)]
+struct Linkage {
+    /// The static library cargo just built.
+    archive: PathBuf,
+    /// The system libraries rustc says a `staticlib` needs alongside it, in
+    /// the order it gave them — which it warns can matter.
+    native: Vec<String>,
+}
+
+/// Build the library, and find out from cargo both where it is and what else
+/// it needs.
+fn build() -> Linkage {
+    let run = Command::new(cargo())
+        .args([
+            "rustc",
+            "-p",
+            "conform-ffi",
+            "--lib",
+            "--crate-type",
+            "staticlib",
+            "--message-format=json-render-diagnostics",
+            "--",
+            "--print",
+            "native-static-libs",
+        ])
+        .current_dir(workspace_root())
+        .output()
+        .expect("cargo should be runnable from a cargo test");
+
+    let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+    assert!(
+        run.status.success(),
+        "cargo could not build the static library.\n--- stdout\n{stdout}\n--- stderr\n{stderr}",
+    );
+
+    Linkage {
+        archive: archive_from(&stdout).unwrap_or_else(|| {
+            panic!("cargo reported no `staticlib` artefact for conform-ffi.\n{stdout}")
+        }),
+        native: native_from(&stderr)
+            .unwrap_or_else(|| panic!("rustc printed no `native-static-libs` note.\n{stderr}")),
+    }
+}
+
+/// The `staticlib` path, out of cargo's JSON message stream.
+fn archive_from(stdout: &str) -> Option<PathBuf> {
+    for line in stdout.lines() {
+        let Ok(message) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if message["reason"] != "compiler-artifact" || message["target"]["name"] != "conform_ffi" {
+            continue;
+        }
+        let is_staticlib = message["target"]["kind"]
+            .as_array()
+            .is_some_and(|kinds| kinds.iter().any(|kind| kind == "staticlib"));
+        if !is_staticlib {
+            continue;
+        }
+        // By extension rather than by position in the list: a `staticlib`
+        // artefact record also carries the `.d` depfile, and on Windows the
+        // archive is `.lib` rather than `.a`.
+        let found = message["filenames"]
+            .as_array()?
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|name| {
+                Path::new(name).extension().is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("a") || extension.eq_ignore_ascii_case("lib")
+                })
+            })?;
+        return Some(PathBuf::from(found));
+    }
+    None
+}
+
+/// The system libraries, out of rustc's `--print native-static-libs` note.
+///
+/// The note is a single line of the form `note: native-static-libs: -lfoo
+/// -lbar`, and the line above it says the order and any duplication can be
+/// significant — so it is passed through as given rather than sorted,
+/// de-duplicated or otherwise tidied.
+fn native_from(stderr: &str) -> Option<Vec<String>> {
+    const MARKER: &str = "native-static-libs:";
+    stderr.lines().find_map(|line| {
+        let (_, libraries) = line.split_once(MARKER)?;
+        Some(
+            libraries
+                .split_whitespace()
+                .map(ToOwned::to_owned)
+                .collect(),
+        )
+    })
+}
+
 #[test]
 fn a_c_program_links_the_library_and_validates_a_document() {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let library = shared_library();
-    let library_dir = library.parent().expect("a file has a directory").to_owned();
+    let linkage = build();
+    assert!(
+        linkage.archive.exists(),
+        "cargo named {} and did not produce it",
+        linkage.archive.display()
+    );
 
-    let out_dir = artefact_dir().join("conform-ffi-smoke");
+    let out_dir = linkage
+        .archive
+        .parent()
+        .expect("an artefact has a directory")
+        .join("conform-ffi-smoke");
     std::fs::create_dir_all(&out_dir).expect("the artefact directory is writable");
     let program = out_dir.join("conform_smoke");
 
-    let compile = Command::new(compiler())
+    let mut compile = Command::new(compiler());
+    compile
         .arg("-std=c11")
         .args(["-Wall", "-Wextra", "-Werror"])
         .arg("-I")
         .arg(crate_dir.join("include"))
         .arg(crate_dir.join("tests/smoke/conform_smoke.c"))
-        .arg("-L")
-        .arg(&library_dir)
-        .arg("-lconform_ffi")
-        // So the program finds the library at run time without anybody having
-        // to set `LD_LIBRARY_PATH` or `DYLD_LIBRARY_PATH` — which on macOS is
-        // stripped from a child process by System Integrity Protection, and so
-        // would not survive being set here anyway.
-        .arg(format!("-Wl,-rpath,{}", library_dir.display()))
+        // The archive before the system libraries it needs, which is the order
+        // a traditional linker wants and the order rustc printed them in.
+        .arg(&linkage.archive)
+        .args(&linkage.native)
         .arg("-o")
-        .arg(&program)
+        .arg(&program);
+
+    let compiled = compile
         .output()
         .expect("a C compiler should be on PATH; this test is gated behind `--features c-smoke`");
 
     assert!(
-        compile.status.success(),
-        "the C program did not compile against the generated header.\n--- stdout\n{}\n--- \
-         stderr\n{}",
-        String::from_utf8_lossy(&compile.stdout),
-        String::from_utf8_lossy(&compile.stderr),
+        compiled.status.success(),
+        "the C program did not compile and link against the generated header and the static \
+         library.\ncommand: {compile:?}\n--- stdout\n{}\n--- stderr\n{}",
+        String::from_utf8_lossy(&compiled.stdout),
+        String::from_utf8_lossy(&compiled.stderr),
     );
 
     // A deliberately faulty contract, so that "a report came back" and "a
