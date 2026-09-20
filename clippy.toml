@@ -1,0 +1,8 @@
+# Keep clippy's MSRV-aware lints in step with the workspace rust-version.
+msrv = "1.96"
+
+# Public API stability matters from 0.1.0 onward: several internal consumers pin
+# against these crates immediately (plan §7.2, OQ-003 resolved in favour of
+# strict semver from the first release), so clippy must not propose
+# API-breaking rewrites.
+avoid-breaking-exported-api = true

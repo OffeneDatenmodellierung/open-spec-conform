@@ -1,0 +1,32 @@
+# Virtual workspace.
+#
+# Deliberately NO `[workspace.package] version` and no `version.workspace = true`
+# in any member manifest: every crate carries a literal version in its own
+# manifest so each can be pinned and released independently (plan §7.2, FR-011).
+# Non-version metadata is inherited, because that genuinely is shared.
+
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition      = "2024"
+rust-version = "1.96"
+license      = "MIT OR Apache-2.0"
+repository   = "https://github.com/OffeneDatenmodellierung/open-spec-conform"
+authors      = ["Mark Olliver <mark@olliver.me.uk>"]
+
+[workspace.lints.rust]
+missing_docs             = "warn"
+missing_debug_implementations = "warn"
+unsafe_code              = "forbid"
+rust_2018_idioms         = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all      = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+[profile.release]
+lto       = "thin"
+strip     = true
+codegen-units = 1

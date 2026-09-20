@@ -1,0 +1,17 @@
+# Release automation.
+#
+# `semver_check = true` is the deliberate difference from Roteiro (plan §7.2).
+# Roteiro disables it because its crates share one version, which makes
+# `cargo-semver-checks` force spurious workspace-wide majors. Here every crate
+# carries its own literal version, so that pathology does not arise and semver
+# enforcement is exactly what we want: internal consumers pin against these
+# crates immediately (OQ-003, resolved in favour of strict semver).
+#
+# `dependencies_update = false` keeps a release from silently bumping the
+# dependency tree it is releasing.
+
+[workspace]
+changelog_update    = true
+git_release_enable  = true
+dependencies_update = false
+semver_check        = true
