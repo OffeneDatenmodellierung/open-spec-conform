@@ -89,14 +89,19 @@ impl Site {
         let root = root.as_ref();
         let registry_file = root.join(REGISTRY_FILE);
 
-        let registry = Registry::load_path(&registry_file).map_err(|error| GatherError::Registry {
-            path: registry_file.clone(),
-            error: Box::new(error),
-        })?;
+        let registry =
+            Registry::load_path(&registry_file).map_err(|error| GatherError::Registry {
+                path: registry_file.clone(),
+                error: Box::new(error),
+            })?;
 
         let crates = read_dir(root.join(CRATES_DIR)).map_err(GatherError::Manifest)?;
 
-        Ok(Self::from_parts(&registry, crates, REGISTRY_FILE.to_owned()))
+        Ok(Self::from_parts(
+            &registry,
+            crates,
+            REGISTRY_FILE.to_owned(),
+        ))
     }
 
     /// Gather from a registry already in hand.

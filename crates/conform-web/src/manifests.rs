@@ -163,9 +163,7 @@ fn read_one(path: &Path, crates_dir: &Path) -> Result<CrateEntry, ManifestError>
 /// the same reason: `Some("")` is not evidence of anything, and representing
 /// it as present would make the page claim a fact nobody established.
 fn present(value: Option<String>) -> Option<String> {
-    value
-        .map(|v| v.trim().to_owned())
-        .filter(|v| !v.is_empty())
+    value.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty())
 }
 
 /// A manifest that could not be read.
@@ -282,7 +280,10 @@ mod tests {
     #[test]
     fn blank_metadata_is_folded_to_absent() {
         assert_eq!(present(Some("   ".to_owned())), None);
-        assert_eq!(present(Some(" 0.1.0 ".to_owned())), Some("0.1.0".to_owned()));
+        assert_eq!(
+            present(Some(" 0.1.0 ".to_owned())),
+            Some("0.1.0".to_owned())
+        );
         assert_eq!(present(None), None);
     }
 }
