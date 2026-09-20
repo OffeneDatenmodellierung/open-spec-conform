@@ -628,6 +628,99 @@ bearing for the SPA demo*, which is the strongest justification for building it.
 `wasm-bindgen`) are heavy and MUST NOT leak into the harness's tree — the exact
 failure mode NFR-001 was written to prevent.
 
+### 5.4 Correction — the ABI as built
+
+§5.1's C sketch above was written before the crate existed and is **wrong about
+the signatures**, though right about everything it was actually arguing for: the
+JSON boundary, the opaque handle, the `catch_unwind` discipline and the `Send`
+but not `Sync` rule all survived intact. The sketch is left in place because the
+reasoning around it is still the reasoning; this section records what was
+actually shipped in Phase 6 and why each difference exists. A plan whose code
+sample no longer compiles is a plan people stop reading.
+
+```c
+const char*        conform_version(void);
+ConformValidator*  conform_validator_new(const char *spec_id,
+                                         const char *registry_path);
+enum ConformStatus conform_validate(ConformValidator *validator,
+                                    const char *document_id,
+                                    const uint8_t *document, size_t document_len,
+                                    char **out_json, size_t *out_len);
+const char*        conform_last_error(void);
+void               conform_string_free(char *text);
+void               conform_validator_free(ConformValidator *validator);
+enum ConformStatus conform_self_test_panic(void);
+```
+
+**Bytes, not a path.** The sketch's `conform_validate` took a
+`const char* document_path`. An embedder rarely has one: the document is in a
+request body, an editor buffer, a socket, a database column. A path-taking
+boundary makes every such caller write a temporary file and clean it up, to be
+read straight back by a library in the same process. The boundary takes a
+pointer and a length; a caller who *does* have a path reads the file, which is
+the easy direction.
+
+**The handle is per specification, not per registry.** The sketch's
+`conform_ctx` held a registry and took a `spec_id` on every call. The expensive
+thing here is compiling a JSON Schema, so that context would have to either
+recompile per document or cache invisibly, and the provenance check — the
+re-hash of the vendored bytes against `specs.toml` — would happen somewhere the
+caller could not see. Binding the schema to the handle makes both explicit:
+`conform_validator_new` is where the registry is read, where the digest is
+verified, and where a drifted schema is refused. What comes back is a validator
+that has already earned the right to issue verdicts.
+
+**`conform_last_error` takes no argument.** It could not take a context: the
+call most likely to fail is the one that *creates* the handle, and it has no
+handle to leave a message on. The slot is thread-local, with `strerror`'s
+lifetime contract, which also means two threads failing at once do not overwrite
+each other's explanation.
+
+**The return type is an enum, not an `int`.** `ConformStatus` is `#[repr(i32)]`
+and cbindgen emits it with its values, so a C caller switches on names. `0` is
+success and nothing else is, so a binding that does not recognise a future code
+still gets the question right.
+
+**Two entry points the sketch did not have.** `conform_version()` reports the
+library's release. `conform_self_test_panic()` panics on purpose, catches it,
+and returns `CONFORM_STATUS_PANIC` — because the panic discipline has a
+prerequisite the linker does not check: a `panic = "abort"` build has no
+unwinding to catch, and `catch_unwind` cannot help. A binding calls it once at
+start-up; a process that dies there has linked a build in which no entry point
+is safe to call from C. Two compile-time constants come with them,
+`CONFORM_ABI_VERSION` and `CONFORM_SCHEMA_VERSION`, because "can I link this",
+"which release is this" and "can I parse this report" are three questions and
+the sketch had a number for none of them.
+
+**`okf` is not reachable across this boundary.** An OKF bundle is a directory of
+cross-referencing files and `conform_okf::load` takes a filesystem root; a
+bytes-in boundary has nothing to hand it. Inventing an archive format for a
+directory is a much larger decision than an FFI should make on its own, so
+asking for `okf` fails with a message saying exactly that, rather than returning
+an empty report. `odcs` and `odps` are reachable. If the SPA's WASM demo (§6)
+needs bundles, that is the phase where the encoding question gets answered
+properly.
+
+**cbindgen is outside the workspace.** §5.3 says the FFI crate's build
+dependencies must not leak into the tree, and the licence gate agreed more
+forcefully than expected: `cbindgen` is MPL-2.0 and `deny.toml` allows
+permissive licences only, so `cargo deny --all-features check` rejects it as a
+dependency of `conform-ffi` however optional the feature. The generator
+therefore lives in `tools/headergen`, its own cargo root, exactly as
+`tools/oracle` does — and the header it produces is committed, with a test that
+regenerates and compares. `deny.toml` was not touched.
+
+**On §7.2's "valgrind/ASan clean".** Those are two claims about two tools with
+two availabilities. valgrind is not packaged for Apple silicon, so on the
+machine Phase 6 was written on it could not be run at all; AddressSanitizer
+could, and was clean, but LeakSanitizer is inactive on that platform — a
+deliberate leak goes unreported there even with `detect_leaks=1`. So a macOS
+developer gets the invalid-access half and not the unreleased-memory half.
+`tools/sanitise/run.sh` runs what is present, builds two programs that are
+*supposed* to fail so that a clean run cannot be a checker that silently did not
+run, and exits non-zero if nothing ran. The valgrind arm runs in CI on Linux,
+which is where the leak claim is made. See `tools/sanitise/README.md`.
+
 ---
 
 ## 6. Single-page app
