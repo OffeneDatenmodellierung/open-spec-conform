@@ -1,0 +1,47 @@
+[package]
+name = "conform-model-odps"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011). This crate tracks
+# the Open Data Product Standard, which moves on Bitol's schedule.
+version = "0.1.0"
+
+description = "Typed Rust model of the Open Data Product Standard (ODPS) v1.0.0, with lossless round-trip of unmodelled fields."
+readme = "README.md"
+keywords = ["odps", "data-product", "bitol", "model", "serde"]
+categories = ["data-structures", "encoding"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[features]
+default = []
+# YAML convenience constructors on the document root. See the identical
+# feature on `conform-model-odcs` for why `serde_norway` and not `serde_yaml`.
+yaml = ["dep:serde_norway"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+# Carries `customProperties[].value`, which ODPS leaves untyped, and every key
+# this model does not name.
+serde_json = "1"
+
+# `extra` maps are `IndexMap`, not `HashMap`, so a document's unmodelled keys
+# come back out in the order it carried them.
+indexmap = { version = "2", features = ["serde"] }
+
+serde_norway = { version = "0.9", optional = true }
+
+[dev-dependencies]
+serde_norway = "0.9"
+
+[lints]
+workspace = true

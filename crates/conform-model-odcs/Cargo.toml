@@ -1,0 +1,59 @@
+[package]
+name = "conform-model-odcs"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011). This crate tracks
+# the Open Data Contract Standard, which moves on Bitol's schedule.
+version = "0.1.0"
+
+description = "Typed Rust model of the Open Data Contract Standard (ODCS) v3.1.0, with lossless round-trip of unmodelled fields."
+readme = "README.md"
+keywords = ["odcs", "data-contract", "bitol", "model", "serde"]
+categories = ["data-structures", "encoding"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[features]
+default = []
+# YAML convenience constructors on the document root. ODCS documents are YAML
+# in practice, and a consumer that only wants the types should not have to
+# work out which YAML crate this workspace considers acceptable.
+#
+# `serde_norway` is the maintained fork of `serde_yaml` 0.9 and is what every
+# other crate in this workspace parses YAML with; `serde_yaml` itself is
+# unmaintained and drags in `yaml-rust` (RUSTSEC-2024-0320), which `cargo deny`
+# rejects. Enabling this feature MUST NOT change how any field deserializes.
+yaml = ["dep:serde_norway"]
+
+[dependencies]
+# The only thing this crate fundamentally is: a set of serde-derived types.
+serde = { version = "1", features = ["derive"] }
+
+# Carries the values ODCS declares as `AnyType` — `customProperties[].value`,
+# `examples[]`, quality-rule operands — and every key this model does not name,
+# which is the whole of the round-trip guarantee.
+serde_json = "1"
+
+# `extra` maps are `IndexMap`, not `HashMap`, so that a document which goes in
+# and comes out again comes out with its unmodelled keys in the order it
+# carried them. A `HashMap` here would make serialization non-deterministic,
+# which is a poor property for a format people diff in code review.
+indexmap = { version = "2", features = ["serde"] }
+
+# Optional, feature `yaml`. See the feature comment above.
+serde_norway = { version = "0.9", optional = true }
+
+[dev-dependencies]
+# The round-trip tests read the ODCS fixture corpus, which is YAML and JSON.
+serde_norway = "0.9"
+
+[lints]
+workspace = true

@@ -1,0 +1,20 @@
+# Values outside the sets the schema publishes as `enum`. The vendored schema
+# rejects this document -- that is a validator's verdict, and correct.
+#
+# The model reads it anyway, keeps `kind` and `status` verbatim in their
+# `Other` variants, and writes them back unchanged. A model that refused would
+# leave a caller unable to inspect or repair the very documents most in need of
+# it, and would put a hole in the round-trip guarantee exactly where a document
+# is unusual.
+apiVersion: v2.0
+kind: QuantumAnnealer
+id: 1b0c6a7e-2d3f-4e5a-8b9c-0d1e2f3a4b5c
+name: annealer-alpha
+version: 0.9.0
+status: mothballed
+pricing:
+  model: per_qubit_second
+risk:
+  classification: catastrophic
+  impactAreas:
+    - existential

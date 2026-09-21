@@ -1,0 +1,111 @@
+# A realistic CADS asset exercising the parts of the schema a minimal document
+# never reaches: runtime, SLA, pricing, team, the whole risk block, compliance
+# frameworks and controls, a validation profile, and all three model
+# references.
+#
+# Authored against schemas/cads.schema.json as vendored and pinned by
+# specs.toml, because CADS has no adapter in this workspace and therefore no
+# pinned fixture corpus to copy from. See this crate's README.
+apiVersion: v1.0
+kind: AIModel
+id: 550e8400-e29b-41d4-a716-446655440000
+name: sentiment-analysis-model
+version: 1.0.0
+status: production
+domain: ai-ml
+domainId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+tags:
+  - ai
+  - nlp
+description:
+  purpose: Sentiment analysis for customer feedback.
+  usage: Analyse customer reviews and support transcripts.
+  limitations: English only; not validated on clinical or legal text.
+  externalLinks:
+    - url: https://example.com/model-cards/sentiment
+      description: Model card.
+runtime:
+  environment: production
+  endpoints:
+    - https://inference.example.com/v1/sentiment
+  container:
+    image: registry.example.com/sentiment:1.0.0
+  resources:
+    cpu: "2"
+    memory: 8Gi
+    gpu: "1"
+sla:
+  properties:
+    - element: latency_p99
+      value: 250
+      unit: ms
+      driver: operational
+    - element: availability
+      value: "99.9"
+      unit: percent
+pricing:
+  model: per_request
+  currency: EUR
+  unitCost: 0.0004
+  billingUnit: request
+  notes: Internal cross-charge only.
+team:
+  - role: Model Owner
+    name: Charlie Eastwood
+    contact: ceastwood@example.com
+  - role: Reviewer
+    name: Dana Ng
+risk:
+  classification: high
+  impactAreas:
+    - fairness
+    - privacy
+  intendedUse: Ranking inbound feedback for triage.
+  outOfScopeUse: Any decision affecting an individual's employment or credit.
+  assessment:
+    methodology: EU AI Act conformity assessment
+    date: "2026-02-04"
+    assessor: Risk & Compliance
+  mitigations:
+    - description: Quarterly bias evaluation against a held-out corpus.
+      status: implemented
+    - description: Human review of all low-confidence outputs.
+      status: planned
+compliance:
+  frameworks:
+    - name: EU AI Act
+      category: regulation
+      status: assessed
+    - name: ISO/IEC 42001
+      category: standard
+      status: compliant
+  controls:
+    - id: AI-07
+      description: Training data provenance is recorded.
+      evidence: ./evidence/AI-07.md
+validationProfiles:
+  - name: high-risk-ai
+    appliesTo:
+      kind: AIModel
+      riskClassification: high
+    requiredChecks:
+      - bias-evaluation
+      - model-card-present
+bpmnModels:
+  - name: feedback-triage
+    reference: ./process/feedback-triage.bpmn.xml
+    format: bpmn20-xml
+    description: How a scored item reaches a human.
+dmnModels:
+  - name: escalation-rules
+    reference: ./decisions/escalation.dmn.xml
+    format: dmn13-xml
+openApiSpecs:
+  - name: inference-api
+    reference: ./api/inference.openapi.yaml
+    format: openapi-3.1
+customProperties:
+  costCentre: RD-114
+  retrainCadenceDays: 90
+createdAt: "2026-01-15T09:00:00Z"
+updatedAt: "2026-02-04T16:30:00Z"
