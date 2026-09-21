@@ -42,15 +42,68 @@ components go out and the thing anybody actually wanted does not. Plan the
 sequence so that the last step is the one you are most confident about, and do
 not start a release you do not intend to finish.
 
-`cargo install conform-cli` installs a binary named `conform`. That works and
-needs no change: the crate name is `conform-cli`, and only the `[[bin]]` target
-is called `conform`. The bare name `conform` on crates.io is taken by an
-abandoned 2018 macro crate and is not worth pursuing.
+`cargo install conform-cli` installs a binary named `conform`. The crate name
+is `conform-cli`, and only the `[[bin]]` target is called `conform`. The bare
+name `conform` on crates.io is taken by an abandoned 2018 macro crate and is
+not worth pursuing.
 
 > **Option, not a recommendation.** `open-spec-conform` is free on crates.io.
 > If matching the repository name is worth more for discoverability than
 > `conform-cli`'s directness, that name is available — but it is a decision
 > about product naming, not about packaging, and nothing here depends on it.
+
+### What an installed binary can and cannot do
+
+An earlier version of this runbook said the `cargo install conform-cli`
+journey "works and needs no change". **That was wrong**, and it was wrong on
+the point that matters: the installed binary could not check anything. It
+searched for a `specs.toml` at or above the working directory, found none, and
+exited 2 under `CLI100`. The message was honest and the tool was useless.
+
+`conform-cli` now carries the catalogue and every artefact it records, as
+symbolic links under `crates/conform-cli/embedded/` that cargo dereferences
+into the tarball. So:
+
+**It can**, with nothing on disk:
+
+- validate ODCS, ODPS and ODCL documents, and check OKF bundles;
+- re-hash every embedded artefact against the embedded catalogue's digests —
+  the *same* comparison the on-disk path uses, through
+  `conform_registry::verify_bytes`, not a second copy of it;
+- run `registry list` and `registry verify` over the embedded catalogue;
+- say on every run which registry answered.
+
+**It cannot**:
+
+- speak for any `specs.toml` on disk. Both sides of the embedded comparison
+  were frozen into the executable at the same moment, so a green embedded
+  `registry verify` proves the *binary* is internally consistent and nothing
+  about the working tree. The provenance sentence on every embedded report
+  says exactly that.
+- see anything vendored after it was published — see below.
+
+### The embedded catalogue ages, and that is the deal
+
+**An installed `conform 0.1.0` carries `0.1.0`'s view of upstream forever.**
+If ODCS 3.2 ships next year, a `conform 0.1.0` installed today still validates
+against 3.1.0, and still reports `odcs 3.1.0` while doing it.
+
+This is the right default — a frozen catalogue is what makes an embedded
+verdict reproducible — but it is a property users have to be told, not a
+footnote. Both escapes are ordinary and the tool names them:
+
+- `cargo install conform-cli --force` takes a newer release with a newer
+  catalogue.
+- `--registry <path>` checks against a catalogue the user controls, and beats
+  the embedded one. The `registry:` line then names the file.
+
+The precedence is explicit and stated in the output on every run: `--registry`
+first, then a `specs.toml` discovered by searching upward, then the embedded
+copy. That ordering is not a convenience. A binary that answered from its own
+memory while the reader stood in a checkout would report the specifications it
+was built with, and the reader would believe they were seeing the ones in front
+of them — which is the precise failure this project exists to prevent. So the
+embedded copy is reached last, and the run says when it was reached.
 
 ## What is published, and what is not
 
