@@ -7,7 +7,7 @@
 use std::fmt::Write as _;
 use std::fs;
 
-use conform_core::{ConformanceReport, Diagnostic, Location, Severity};
+use conform_core::{ConformanceReport, Diagnostic, DocumentId, Location, Severity};
 use sha2::{Digest, Sha256};
 
 use crate::codes;
@@ -36,6 +36,11 @@ impl Registry {
     }
 
     /// Re-hash one entry's artefact. See [`verify`](Registry::verify).
+    ///
+    /// Reads the bytes, then hands them to [`verify_bytes`] — which is where
+    /// the comparison itself lives, so that a caller holding the bytes
+    /// already, without a filesystem to read them from, reaches the same
+    /// verdict by the same code rather than by a second implementation of it.
     #[must_use]
     pub fn verify_entry(&self, index: usize, entry: &SpecEntry) -> Diagnostic {
         let path = self.artefact_path(entry);
@@ -71,35 +76,67 @@ impl Registry {
             }
         };
 
-        let actual = sha256_hex(&bytes);
-        if actual == entry.sha256.trim() {
-            Diagnostic::new(
-                Severity::Info,
-                codes::ARTEFACT_VERIFIED,
-                location,
-                format!(
-                    "`{}` matches its recorded digest ({} bytes)",
-                    entry.id,
-                    bytes.len()
-                ),
-            )
-            .with_spec_ref(spec_ref())
-        } else {
-            Diagnostic::error(
-                codes::SHA256_MISMATCH,
-                location,
-                format!(
-                    "`{}` hashes to {actual}, and the registry records {}",
-                    entry.id,
-                    entry.sha256.trim()
-                ),
-            )
-            .with_help(
-                "either the artefact was edited — in which case it is no longer the upstream \
-                 document the entry claims — or the registry was updated without re-hashing it",
-            )
-            .with_spec_ref(spec_ref())
-        }
+        compare(entry, &bytes, location)
+    }
+}
+
+/// Re-hash bytes already in hand against what the registry records for an
+/// entry.
+///
+/// [`Registry::verify_entry`] is this function with a `fs::read` in front of
+/// it. It is public and separate because not every holder of a vendored
+/// artefact has a filesystem to read it from: a binary that embedded the bytes
+/// at compile time, so that it still works when installed away from the
+/// repository, has them already — and must reach the *same* verdict, under the
+/// same code, with the same wording.
+///
+/// Two implementations of "re-hash and compare" would be one implementation
+/// and one place for the check to quietly become decoration. So there is one,
+/// and this is it.
+///
+/// `document` is what the resulting diagnostic is *about* — a path for the
+/// on-disk caller, and whatever names the bytes for an embedding one.
+#[must_use]
+pub fn verify_bytes(
+    index: usize,
+    entry: &SpecEntry,
+    bytes: &[u8],
+    document: impl Into<DocumentId>,
+) -> Diagnostic {
+    let location = Location::document(document).with_pointer(format!("/spec/{index}/sha256"));
+    compare(entry, bytes, location)
+}
+
+/// The comparison, once.
+fn compare(entry: &SpecEntry, bytes: &[u8], location: Location) -> Diagnostic {
+    let actual = sha256_hex(bytes);
+    if actual == entry.sha256.trim() {
+        Diagnostic::new(
+            Severity::Info,
+            codes::ARTEFACT_VERIFIED,
+            location,
+            format!(
+                "`{}` matches its recorded digest ({} bytes)",
+                entry.id,
+                bytes.len()
+            ),
+        )
+        .with_spec_ref(spec_ref())
+    } else {
+        Diagnostic::error(
+            codes::SHA256_MISMATCH,
+            location,
+            format!(
+                "`{}` hashes to {actual}, and the registry records {}",
+                entry.id,
+                entry.sha256.trim()
+            ),
+        )
+        .with_help(
+            "either the artefact was edited — in which case it is no longer the upstream \
+             document the entry claims — or the registry was updated without re-hashing it",
+        )
+        .with_spec_ref(spec_ref())
     }
 }
 
