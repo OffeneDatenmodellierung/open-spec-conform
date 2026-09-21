@@ -148,6 +148,23 @@ already matches the consumer.
 Raised as an objection, not a refusal. The human has asked for it; if the
 answer is still yes, `dmsdk-model-*` is the name to use.
 
+> **RESOLVED 2026-09-21 — objection upheld. Tier 3 stays in the SDK.**
+>
+> The human settled the dependency direction: `data-modelling-sdk` and Roteiro
+> will both depend on *this* repository, never the reverse
+> (`0003-dependency-direction.md`). That resolves this on firmer ground than
+> naming. A dependent keeps its own domain model; `workspace`, `decision`,
+> `knowledge`, `sketch`, `table`, `column`, `domain`, `relationship`,
+> `domain_config` and `cross_domain` are the SDK's own concepts and stay with
+> the SDK. This repository supplies models of **published specifications**
+> — ODCS, ODPS, CADS, DBMV — and nothing else.
+>
+> `dmsdk-model-*` is therefore not needed and should not be created.
+>
+> **The port is complete, not stopped early.** Tier 1 shipped four crates
+> (PR #15); Tier 2 was resolved as unnecessary; Tier 3 is out of scope by
+> decision. Nothing further is owed here.
+
 1. **This repository's purpose is stated as conformance against published
    specifications with enforced provenance.** `specs.toml` pins every schema to
    an upstream commit; `conform-registry` enforces the pin at the moment of
