@@ -43,7 +43,7 @@ conform-registry = { path = "../conform-registry", version = "0.1.0" }
 # declare 2019-09. Draft detection is left to `jsonschema`, which reads that
 # keyword. `default-features = false` drops the `reqwest`-backed remote
 # reference retriever: nothing here touches the network.
-jsonschema = { version = "0.38", default-features = false }
+jsonschema = { version = "0.56", default-features = false }
 
 # The document model the schema validator, the hygiene rules and the
 # cross-reference resolver all read.

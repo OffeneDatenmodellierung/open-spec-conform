@@ -38,7 +38,7 @@ conform-registry = { path = "../conform-registry", version = "0.1.0" }
 # so), and hand-rolling a validator for a draft with `unevaluatedProperties`
 # is not a reasonable thing to do. `default-features = false` drops the
 # `reqwest`-backed remote-reference retriever: nothing here touches the network.
-jsonschema = { version = "0.38", default-features = false }
+jsonschema = { version = "0.56", default-features = false }
 
 # The document model both the schema validator and the hygiene rules read.
 serde_json = "1"
