@@ -32,13 +32,14 @@ use support::{conform, conform_json, in_workspace};
 
 /// Every invocation this test holds the two renderers to.
 ///
-/// Deliberately wide: both single-document adapters over their whole fixture
-/// corpora, a bundle, both registry commands, all three gate policies, and two
-/// ways of failing before any document is read. A pair that agreed only on
-/// clean input would prove very little.
+/// Deliberately wide: all three single-document adapters over their whole
+/// fixture corpora, a bundle, both registry commands, all three gate policies,
+/// and two ways of failing before any document is read. A pair that agreed
+/// only on clean input would prove very little.
 fn invocations() -> Vec<Vec<String>> {
     let contracts = in_workspace("crates/conform-odcs/tests/fixtures");
     let products = in_workspace("crates/conform-odps/tests/fixtures");
+    let lexicon = in_workspace("crates/conform-lexicon/tests/fixtures");
     let bundle = in_workspace("crates/conform-okf/tests/fixtures/okf-upstream/acme_retail");
 
     let mut invocations = Vec::new();
@@ -52,17 +53,26 @@ fn invocations() -> Vec<Vec<String>> {
         for base in [
             vec!["validate", contracts.as_str()],
             vec!["validate", products.as_str()],
+            vec!["validate", lexicon.as_str()],
             vec!["validate", bundle.as_str()],
             vec!["validate", contracts.as_str(), "--spec", "odps"],
+            // `--spec odcl` over the lexicon corpus forces the four fixtures
+            // the sniff cannot route — the unparseable one, the empty one, the
+            // comments-only one and the sequence-at-the-root one — through the
+            // adapter, so the corpus covers the intake failures too.
+            vec!["validate", lexicon.as_str(), "--spec", "odcl"],
+            vec!["validate", contracts.as_str(), "--spec", "odcl"],
             vec![
                 "validate",
                 contracts.as_str(),
                 products.as_str(),
+                lexicon.as_str(),
                 bundle.as_str(),
             ],
             vec!["registry", "list"],
             vec!["registry", "verify"],
             vec!["registry", "list", "--spec", "okf"],
+            vec!["registry", "list", "--spec", "odcl"],
             // Two runs that cannot happen at all. They must agree on exit 2
             // just as firmly as the runs that can.
             vec!["validate", contracts.as_str(), "--spec", "nonesuch"],
@@ -135,8 +145,9 @@ fn the_corpus_carries_nothing_the_terminal_escaping_would_alter() {
     // renderings above can only be a real disagreement and never the one
     // intended difference between the sinks.
     let contracts = in_workspace("crates/conform-odcs/tests/fixtures");
+    let lexicon = in_workspace("crates/conform-lexicon/tests/fixtures");
     let bundle = in_workspace("crates/conform-okf/tests/fixtures/okf-upstream/acme_retail");
-    let (json, _) = conform_json(&["validate", &contracts, &bundle]);
+    let (json, _) = conform_json(&["validate", &contracts, &lexicon, &bundle]);
 
     let mut seen = 0usize;
     for diagnostic in json["diagnostics"]

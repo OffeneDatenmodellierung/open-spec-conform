@@ -6,7 +6,10 @@
 //!    a directory holding many. Walking it is this module's job.
 //! 2. **Which standard?** An ODCS contract and an ODPS product are both YAML
 //!    with an `apiVersion`, and the file extension does not distinguish them.
-//!    One key does: `kind`.
+//!    One key does: `kind`. An ODCL document carries no `kind` at all; what it
+//!    carries is a root `dataContractSpecification`, which its schema makes
+//!    required. Each standard is routed by the discriminator its own
+//!    specification defines, and never by one borrowed from a sibling.
 //!
 //! # Sniffing is a routing decision, never a verdict
 //!
@@ -25,6 +28,14 @@
 //! choosing a standard the document happens to satisfy. And a file nothing
 //! here recognises is reported under [`codes::UNRECOGNISED_DOCUMENT`], never
 //! skipped: a file silently ignored is a file everybody believes was checked.
+//!
+//! Routing a `dataContractSpecification` document to `conform-lexicon` is the
+//! *opposite* of that defect rather than a repetition of it. The defect was
+//! recognising ODCL and then reporting the answer as ODCS; here the document
+//! is recognised as ODCL, handed to the ODCL adapter, and reported under ODCL
+//! codes against the ODCL schema — and if it turns out not to be an ODCL
+//! document, `conform-lexicon` fails it, which is what the fixture
+//! `faulty-odcs-document.yaml` in that crate records.
 //!
 //! `--spec` overrides the sniff entirely, which is the escape hatch for a
 //! document whose `kind` is wrong — exactly the case where you want a verdict
@@ -233,39 +244,69 @@ fn visit_file(path: &Path, forced: Option<Standard>, found: &mut Discovery) {
         Diagnostic::warning(
             codes::UNRECOGNISED_DOCUMENT,
             Location::document(id),
-            match kind_of(&text) {
+            match kind_in(&text) {
                 Some(kind) => format!("`kind: {kind}` names no standard this binary validates"),
-                None => "no `kind` key, so nothing here can tell which standard this is".to_owned(),
+                None => format!(
+                    "no `kind` key and no `{LEXICON_ROOT_KEY}` key, so nothing here can tell \
+                     which standard this is"
+                ),
             },
         )
         .with_help(
-            "ODCS documents carry `kind: DataContract` and ODPS documents `kind: DataProduct`; \
-             pass `--spec <id>` to check this document as one of them anyway",
+            "ODCS documents carry `kind: DataContract`, ODPS documents `kind: DataProduct`, and \
+             ODCL documents a root `dataContractSpecification`; pass `--spec <id>` to check this \
+             document as one of them anyway",
         ),
     );
 }
 
-/// Which standard a document's `kind` names, if it names one.
+/// The root key every ODCL document is required to carry.
 ///
-/// Reads one key and draws one conclusion. Everything else about the document
-/// is the adapter's business.
+/// Not a heuristic: the vendored schema's `required` is
+/// `["dataContractSpecification", "id", "info"]` and the key is an enum of the
+/// specification versions, so a document without it is not an ODCL document
+/// and a document with it declares which standard it is written in. It is that
+/// standard's `kind`, spelled the way that standard spells it.
+const LEXICON_ROOT_KEY: &str = "dataContractSpecification";
+
+/// Which standard a document declares itself to be, if it declares one.
+///
+/// Reads the discriminator each standard defines for itself — `kind` for the
+/// two Bitol standards, the required root [`LEXICON_ROOT_KEY`] for ODCL — and
+/// draws one conclusion. Everything else about the document is the adapter's
+/// business.
+///
+/// `kind` is consulted first, and that ordering is deliberate: a document that
+/// says `kind: DataContract` has named itself an ODCS contract, and must go to
+/// ODCS to be told what is wrong with it even if it also carries an ODCL key.
 #[must_use]
 pub fn sniff(text: &str) -> Option<FileStandard> {
-    match kind_of(text)?.as_str() {
-        "DataContract" => Some(FileStandard::Odcs),
-        "DataProduct" => Some(FileStandard::Odps),
-        _ => None,
+    let value: serde_norway::Value = serde_norway::from_str(text).ok()?;
+
+    if let Some(kind) = kind_of(&value) {
+        return match kind.as_str() {
+            "DataContract" => Some(FileStandard::Odcs),
+            "DataProduct" => Some(FileStandard::Odps),
+            _ => None,
+        };
     }
+
+    value.get(LEXICON_ROOT_KEY).map(|_| FileStandard::Odcl)
 }
 
 /// The document's `kind`, as written.
-///
-/// Parsed with `serde_norway` — the same parser both adapters use — so a
-/// document that sniffs here cannot fail to parse there for a reason this
-/// module invented.
-fn kind_of(text: &str) -> Option<String> {
-    let value: serde_norway::Value = serde_norway::from_str(text).ok()?;
+fn kind_of(value: &serde_norway::Value) -> Option<String> {
     value.get("kind")?.as_str().map(str::to_owned)
+}
+
+/// The document's `kind`, read from its text.
+///
+/// Parsed with `serde_norway` — the same parser every adapter here uses — so a
+/// document that sniffs one way cannot fail to parse there for a reason this
+/// module invented.
+fn kind_in(text: &str) -> Option<String> {
+    let value: serde_norway::Value = serde_norway::from_str(text).ok()?;
+    kind_of(&value)
 }
 
 /// A directory's entries, sorted, so two runs over one tree report in one
@@ -323,15 +364,53 @@ mod tests {
     }
 
     #[test]
+    fn an_odcl_document_is_routed_by_the_root_key_its_own_schema_requires() {
+        // The `validate_odcs_internal` defect was recognising this document
+        // and then answering as ODCS. Recognising it and answering as ODCL is
+        // the repair, not a repetition: the verdict comes from the ODCL
+        // schema, under ODCL codes.
+        assert_eq!(
+            sniff("dataContractSpecification: 1.1.0\nid: urn:x\n"),
+            Some(FileStandard::Odcl)
+        );
+        // Every version the schema's enum holds, not just the current one.
+        assert_eq!(
+            sniff("dataContractSpecification: 0.9.0\n"),
+            Some(FileStandard::Odcl)
+        );
+        // And a value the enum does *not* hold still routes here, because
+        // rejecting it is the adapter's job and it has an `ODCL103` for it.
+        assert_eq!(
+            sniff("dataContractSpecification: 2.0.0\n"),
+            Some(FileStandard::Odcl)
+        );
+    }
+
+    #[test]
+    fn a_kind_that_names_a_bitol_standard_wins_over_the_lexicon_key() {
+        // A document that calls itself an ODCS contract is checked as one,
+        // whatever else it carries. Otherwise a stray key would silently
+        // redirect a document away from the standard it declares.
+        assert_eq!(
+            sniff("kind: DataContract\ndataContractSpecification: 1.2.1\n"),
+            Some(FileStandard::Odcs)
+        );
+        // And a `kind` naming something else is not quietly re-routed either.
+        assert_eq!(
+            sniff("kind: Deployment\ndataContractSpecification: 1.2.1\n"),
+            None
+        );
+    }
+
+    #[test]
     fn a_document_that_names_no_standard_is_not_routed_to_a_guess() {
-        // The `validate_odcs_internal` defect in one assertion: a document
-        // carrying `dataContractSpecification` is ODCL, and the honest answer
-        // is that nothing here validates ODCL — not a quiet pass under
-        // somebody else's schema.
-        assert_eq!(sniff("dataContractSpecification: 1.1.0\nid: urn:x\n"), None);
         assert_eq!(sniff("kind: Deployment\n"), None);
         assert_eq!(sniff("not: even: yaml: ["), None);
         assert_eq!(sniff(""), None);
+        // A sequence at the root has no keys to read, so nothing here can say
+        // what it is. `conform-lexicon` has a fixture for exactly this shape;
+        // reaching that verdict needs `--spec odcl`.
+        assert_eq!(sniff("- dataContractSpecification: 1.2.1\n"), None);
     }
 
     #[test]

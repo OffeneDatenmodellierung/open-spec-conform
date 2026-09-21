@@ -36,10 +36,15 @@ const HOSTILE: &str = "act\u{202e}evi\u{1b}[31mtcani\u{1b}]0;pwned\u{7}ve\u{200b
 
 /// A run over the given paths, built exactly as the binary builds it.
 fn run_over(paths: Vec<String>) -> Run {
+    run_over_spec(paths, None)
+}
+
+/// The same, with `--spec` set.
+fn run_over_spec(paths: Vec<String>, spec: Option<&str>) -> Run {
     engine::run(&Request {
         command: Command::Validate,
         paths: paths.into_iter().map(Into::into).collect(),
-        spec: None,
+        spec: spec.map(str::to_owned),
         policy: GatePolicy::report_only(),
         registry: Some(specs_toml()),
     })
@@ -242,9 +247,10 @@ fn the_console_shows_the_run_and_never_a_second_opinion() {
     // derived its own findings would fail this in one direction or the other.
     let contracts = support::in_workspace("crates/conform-odcs/tests/fixtures");
     let products = support::in_workspace("crates/conform-odps/tests/fixtures");
+    let lexicon = support::in_workspace("crates/conform-lexicon/tests/fixtures");
     let bundle =
         support::in_workspace("crates/conform-okf/tests/fixtures/okf-upstream/acme_retail");
-    let run = run_over(vec![contracts, products, bundle]);
+    let run = run_over(vec![contracts, products, lexicon, bundle]);
 
     let expected: Vec<String> = run
         .documents
@@ -254,8 +260,13 @@ fn the_console_shows_the_run_and_never_a_second_opinion() {
         .collect();
     assert!(
         expected.len() > 100,
-        "only {} diagnostics across three standards; the corpus has collapsed",
+        "only {} diagnostics across four standards; the corpus has collapsed",
         expected.len()
+    );
+    assert!(
+        expected.iter().any(|found| found.contains(" ODCL")),
+        "the corpus carries no ODCL diagnostic, so this test would not notice the console \
+         dropping every one of them"
     );
 
     let mut app = App::new(run, None);
@@ -303,4 +314,103 @@ fn yaml_quoted(text: &str) -> String {
     }
     quoted.push('"');
     quoted
+}
+
+#[test]
+fn the_odcl_scope_is_reachable_and_carries_its_documents() {
+    // `--spec odcl` opens the console on that entry, and walking the documents
+    // pane reaches the findings the adapter raised. Before the adapter was
+    // wired in the same walk reached a scope with nothing in it, which is the
+    // shape of a specification the console shows and cannot verify.
+    let lexicon = support::in_workspace("crates/conform-lexicon/tests/fixtures");
+    let run = run_over_spec(vec![lexicon], Some("odcl"));
+
+    let mut app = App::new(run, Some("odcl"));
+    let spec = app
+        .selected_spec()
+        .expect("the console opens on odcl")
+        .clone();
+    assert_eq!(spec.id, "odcl");
+    assert!(spec.has_adapter, "odcl must now report a validator");
+
+    // The provenance the spec pane promises is on the opening frame, and the
+    // three fields `specs.toml` leaves out say so rather than showing a blank.
+    let opening = frame(&app);
+    assert!(
+        opening.contains(spec.upstream_link().expect("odcl records a repository")),
+        "{opening}"
+    );
+    assert!(opening.contains(spec.pinned_ref.as_deref().expect("odcl is pinned")));
+    assert!(opening.contains("matched"));
+
+    app.on_key(Key::Upstream);
+    let record = frame(&app);
+    assert!(spec.licence.is_none() && spec.homepage.is_none() && spec.steward.is_none());
+    assert!(record.contains("(not recorded)"), "{record}");
+    app.on_key(Key::Escape);
+
+    // And the documents are there, with ODCL codes on them.
+    app.on_key(Key::NextPane);
+    assert_eq!(app.pane(), Pane::Documents);
+    let mut codes: Vec<String> = Vec::new();
+    for _ in 0..=app.rows().len() {
+        if let Some(found) = app.selected_diagnostic() {
+            codes.push(found.code.to_string());
+        }
+        app.on_key(Key::Down);
+    }
+    assert!(
+        codes.iter().any(|code| code.starts_with("ODCL")),
+        "the odcl scope holds no ODCL diagnostic at all"
+    );
+    assert!(
+        codes.iter().any(|code| code == "ODCL101"),
+        "expected the required-property errors from the faulty fixtures, got {codes:?}"
+    );
+}
+
+#[test]
+fn a_hostile_odcl_document_cannot_reach_the_panes() {
+    // The TUI's half of the escaping obligation, for the adapter that has just
+    // been wired in. `conform-lexicon` states in as many words that it does
+    // not escape; the cells are where that has to be made good.
+    let directory = scratch("tui-hostile-lexicon");
+    let path = write(
+        &directory,
+        "legacy.yaml",
+        &format!(
+            "dataContractSpecification: 1.2.1\n\
+             id: urn:datacontract:checkout:orders\n\
+             info:\n  title: Orders\n  version: 1.0.0\n  status: {}\n",
+            yaml_quoted(HOSTILE)
+        ),
+    );
+
+    // No `--spec`, so the console opens on the first entry and the operator
+    // walks to `odcl` — which is the navigation this test is also checking.
+    let mut app = App::new(run_over(vec![path]), None);
+    while app.selected_spec().is_some_and(|spec| spec.id != "odcl") {
+        let before = app.scope_index();
+        app.on_key(Key::Down);
+        assert_ne!(app.scope_index(), before, "the `odcl` scope is unreachable");
+    }
+    assert_eq!(app.selected_spec().expect("a spec row").id, "odcl");
+
+    let frames = every_frame(&mut app);
+
+    for rendered in &frames {
+        for character in ['\u{202e}', '\u{1b}', '\u{7}', '\u{200b}'] {
+            assert!(
+                !rendered.contains(character),
+                "U+{:04X} reached the console's buffer from an ODCL document",
+                character as u32
+            );
+        }
+    }
+
+    assert!(
+        frames.iter().any(|f| f.contains("<U+202E>")),
+        "the payload was never displayed at all, escaped or otherwise"
+    );
+    assert!(frames.iter().any(|f| f.contains("<U+001B>")));
 }
