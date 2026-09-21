@@ -30,6 +30,7 @@ use conform_odps::OdpsValidator;
 use conform_registry::{Registry, SpecEntry};
 
 use crate::codes;
+use crate::corpus;
 use crate::discover::{self, Target};
 use crate::embedded;
 use crate::model::{
@@ -250,11 +251,29 @@ fn validate(registry: &Registry, request: &Request, run: &mut Run) {
     }
 
     let mut validators = Validators::new(registry, &run.registry_origin);
-    let outcomes: Vec<DocumentOutcome> = discovery
+    let mut outcomes: Vec<DocumentOutcome> = discovery
         .targets
         .iter()
         .map(|target| check(target, &mut validators))
         .collect();
+
+    // The corpus pass, after every document has been checked on its own. It
+    // answers the two questions no adapter can — does an ODPS `contractId`
+    // name a contract that is here, and do two contracts claim one `id` — and
+    // it raises warnings and information only, so a document's verdict is
+    // exactly what its adapter said it was.
+    for (outcome, findings) in outcomes.iter_mut().zip(corpus::check(&discovery.targets)) {
+        if findings.is_empty() {
+            continue;
+        }
+        outcome.report.extend(findings);
+        // `DocumentOutcome::new` ordered the report by severity and this has
+        // just appended to it. Re-ordering keeps every renderer's "errors
+        // first" promise true of the merged list rather than of the list as it
+        // was a moment ago.
+        outcome.report.sort_by_severity();
+    }
+
     run.documents.extend(outcomes);
 }
 
