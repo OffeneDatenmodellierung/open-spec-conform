@@ -68,12 +68,57 @@ marked as such, not maintained as a live tool.
 2. The SDK's migration happens in one pass, when this repository is ready —
    not incrementally against a moving target.
 3. Tier 3 of the model port (`workspace`, `decision`, `knowledge`, `sketch`,
-   `table`, `column`, `domain`, and the rest) should **not** move here. See
-   `0002-sdk-models-coupling.md` §4, where the objection was raised on naming
-   grounds. The dependency direction settles it on stronger grounds: those are
-   the SDK's own domain concepts, the SDK is the dependent party, and a
-   dependent keeps its own domain model. This repository supplies models of
-   *published specifications* — ODCS, ODPS, CADS, DBMV — and nothing else.
+   `table`, `column`, `domain`, and the rest) does **not** move here —
+   **agreed by the human, 2026-09-21.** See `0002-sdk-models-coupling.md` §4,
+   where the objection was raised on naming grounds. The dependency direction
+   settles it on stronger grounds: those are the SDK's own domain concepts, the
+   SDK is the dependent party, and a dependent keeps its own domain model. This
+   repository supplies models of *published specifications* — ODCS, ODPS, CADS,
+   DBMV — and nothing else. The proposed `dmsdk-model-*` crates are therefore
+   not needed and will not be created. **The model port is complete.**
 4. The `yaml-rust` removal in the SDK (merged 2026-09-21, `66c7335`) remains
    worth having on its own merits, but it is no longer a precondition for
    anything here.
+
+## Roteiro inherits too
+
+Confirmed by the human, 2026-09-21: **Roteiro will also depend on this
+repository**, via the published crates. The same rule applies — nothing here
+may ever depend on Roteiro.
+
+One dependency could have created a cycle and does not. `conform-okf` depends
+on `okf-core 0.2.7`, and Roteiro's `rto-render` and `rto-okf-syntax` depend on
+`okf-core 0.2.6`. If `okf-core` were Roteiro's crate, `Roteiro → conform-okf →
+okf-core` would close a loop. It is not: crates.io gives its repository as
+`https://github.com/W4G1/okf`, an independent author, and `conform-okf`'s own
+manifest already says as much. The edge is to a shared third party, which is
+the one shape that is always safe.
+
+`conform-okf` was migrated out of Roteiro's `rto-render/src/okf/`, so on
+adoption Roteiro deletes that module rather than keeping a second copy.
+
+### Open question — `rto-okf-syntax`
+
+Roteiro publishes `rto-okf-syntax 0.1.1`, whose own header says it is "written
+to be given away" and is "meant to be deleted if upstream adopts it". It checks
+the fenced code blocks in an OKF bundle, with `tree-sitter` and `sqlparser`
+behind optional features so no consumer pays for parsers it does not use.
+
+That is precisely the gap `conform-okf` documents in itself: the two
+code-parsing checks are "absent by design, and their absence is the only
+intended behavioural difference from upstream over the published corpus".
+
+Under this decision, **we are the upstream**. Moving that crate here — as, say,
+`conform-okf-syntax`, with an optional feature on `conform-okf` — would close
+the gap and let Roteiro delete its copy on adoption.
+
+Not decided. Two things make it a judgement for the human rather than a
+mechanical move:
+
+1. It is **already published at 0.1.1**, so this is a rename on crates.io, not
+   a refactor. Existing dependants need either a deprecation pointer or a thin
+   shim left behind.
+2. It would make `conform-okf` optionally heavier. `tree-sitter` and
+   `sqlparser` are real supply chain in a project that has been strict about it
+   — `conform-core` still resolves to a single node. Default-off preserves
+   that, but it is a line to cross deliberately.
