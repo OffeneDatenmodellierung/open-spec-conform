@@ -97,28 +97,54 @@ the one shape that is always safe.
 `conform-okf` was migrated out of Roteiro's `rto-render/src/okf/`, so on
 adoption Roteiro deletes that module rather than keeping a second copy.
 
-### Open question — `rto-okf-syntax`
+### Decided — `rto-okf-syntax` moves here as `conform-okf-syntax`
 
-Roteiro publishes `rto-okf-syntax 0.1.1`, whose own header says it is "written
-to be given away" and is "meant to be deleted if upstream adopts it". It checks
-the fenced code blocks in an OKF bundle, with `tree-sitter` and `sqlparser`
-behind optional features so no consumer pays for parsers it does not use.
+Roteiro published `rto-okf-syntax 0.1.1`, whose own header said it was "written
+to be given away" and was "meant to be deleted if upstream adopts it". It
+checks the fenced code blocks in an OKF bundle, with `tree-sitter` and
+`sqlparser` behind optional features so no consumer pays for parsers it does
+not use.
 
 That is precisely the gap `conform-okf` documents in itself: the two
-code-parsing checks are "absent by design, and their absence is the only
+code-parsing checks were "absent by design, and their absence is the only
 intended behavioural difference from upstream over the published corpus".
 
-Under this decision, **we are the upstream**. Moving that crate here — as, say,
-`conform-okf-syntax`, with an optional feature on `conform-okf` — would close
-the gap and let Roteiro delete its copy on adoption.
+Under this decision, **we are the upstream**, and the human decided on
+2026-09-21 that it moves. It is here as `crates/conform-okf-syntax`, ported
+from Roteiro at `8817904e`, and `conform-okf` reaches it through a default-off
+`syntax` feature. Roteiro deleting its copy is a separate change.
 
-Not decided. Two things make it a judgement for the human rather than a
-mechanical move:
+Two things were raised against it when it was still open, and this is what
+happened to each.
 
-1. It is **already published at 0.1.1**, so this is a rename on crates.io, not
-   a refactor. Existing dependants need either a deprecation pointer or a thin
-   shim left behind.
-2. It would make `conform-okf` optionally heavier. `tree-sitter` and
-   `sqlparser` are real supply chain in a project that has been strict about it
-   — `conform-core` still resolves to a single node. Default-off preserves
-   that, but it is a line to cross deliberately.
+**It is already published, so this is a rename on crates.io.** It is, and the
+new crate debuts at `0.1.0` rather than continuing `0.1.1`: a new name is a new
+registry entry whose version history starts where it starts, and continuing
+somebody else's numbering across a rename claims a release history this name
+has not had. `rto-okf-syntax 0.1.1` stays where it is, with its 256 downloads,
+until Roteiro deprecates it. Nothing is yanked and nothing breaks; a dependant
+of the old name keeps a working crate and gains a pointer.
+
+**It would make `conform-okf` optionally heavier, and that is a line to cross
+deliberately.** It was crossed deliberately and the cost was measured rather
+than assumed:
+
+- `cargo tree -p conform-okf` at default features is **byte-identical** to what
+  it was before, dev- and build-dependencies included. `cargo tree -p
+  conform-core` is still a single node.
+- `--features syntax` is the cheap tier and adds **no parser at all** — the
+  dependency is taken with `default-features = false`, so it costs one
+  pure-Rust crate whose own dependencies are `okf-core`, which `conform-okf`
+  already had, and `serde_json`, which the lockfile already had. It is enough
+  to check JSON, YAML and shell quoting.
+- `--features syntax-sql` and `--features syntax-grammars` are what add
+  `sqlparser` and the tree-sitter grammars. Eighteen third-party crates between
+  them, every licence already on `deny.toml`'s allow-list, and
+  `cargo deny --all-features check` passes with the same five warnings it had
+  before — no allow-list edit, no exception, no advisory.
+
+The rules are a third `Validator` rather than a `cfg` inside `OkfHygiene`, so
+the two existing checks report identically in every feature configuration. A
+feature that edited an existing check would make its output a function of the
+build, and because cargo unifies features across a graph the consumer who got
+the different answer would not be the one who asked for it.
