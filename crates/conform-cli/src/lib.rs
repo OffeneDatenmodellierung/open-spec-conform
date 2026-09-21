@@ -47,6 +47,7 @@ pub mod cli;
 pub mod codes;
 pub mod corpus;
 pub mod discover;
+pub mod embedded;
 pub mod engine;
 pub mod escape;
 pub mod human;

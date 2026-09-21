@@ -67,4 +67,4 @@ mod verify;
 pub use entry::{MOVING_REFS, Poll, SpecEntry, is_moving_ref};
 pub use registry::{LoadError, Registry, SUPPORTED_SCHEMA_VERSION, spec_ref};
 pub use rules::ProvenanceRules;
-pub use verify::sha256_hex;
+pub use verify::{sha256_hex, verify_bytes};

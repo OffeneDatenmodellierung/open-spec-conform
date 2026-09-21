@@ -10,6 +10,8 @@
 //! the cheapest way to pass that test forever is to leave the renderers with
 //! nothing to disagree about.
 
+use std::path::{Path, PathBuf};
+
 use conform_core::{ConformanceReport, Diagnostic, GatePolicy, GateVerdict, Severity};
 use conform_registry::SpecEntry;
 
@@ -357,6 +359,97 @@ impl DocumentOutcome {
 /// Everything one invocation found, before anybody has decided how to show it.
 ///
 /// Built once by [`crate::engine::run`]; read by all three renderers and by
+/// Which registry answered this run, and why that one.
+///
+/// # Precedence, and why it is this way round
+///
+/// An explicit `--registry` beats a `specs.toml` found on disk, which beats
+/// the copy compiled into the binary. Each step down is a step further from
+/// what the caller is looking at, so each is only reached when the one above
+/// has nothing to say.
+///
+/// The last step is the one that needs justifying. Somebody standing in a
+/// checkout is asking about *that* checkout; a binary that quietly answered
+/// from its own compiled-in catalogue would report the specifications it was
+/// built with while the reader believed they were seeing the ones in front of
+/// them. That is a false green, and it is the failure this whole project
+/// exists to prevent — so the embedded copy is reached last, and every
+/// renderer says when it was reached.
+///
+/// # This is not a path
+///
+/// [`Run::registry_path`] is what a *diagnostic* names as its document. This
+/// is where the registry came from, which is a different question: under
+/// [`Embedded`](Self::Embedded) there is no file, and a renderer that printed
+/// one would be pointing a reader at something that does not exist.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegistryOrigin {
+    /// `--registry <path>` named it. The caller was explicit and wins.
+    Explicit(PathBuf),
+    /// Found by searching upward from the working directory.
+    Discovered(PathBuf),
+    /// Compiled into this binary, because nothing on disk answered.
+    Embedded,
+}
+
+impl RegistryOrigin {
+    /// The stable word a machine-readable consumer matches on.
+    ///
+    /// Stable in the sense every code in this crate is stable: a consumer
+    /// branches on these three strings, so one is retired rather than
+    /// respelled.
+    #[must_use]
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Explicit(_) => "explicit",
+            Self::Discovered(_) => "discovered",
+            Self::Embedded => "embedded",
+        }
+    }
+
+    /// The file this came from, when it came from one.
+    ///
+    /// [`None`] for [`Embedded`](Self::Embedded), which is the honest answer:
+    /// there is no file. A consumer wanting a path gets an absence rather than
+    /// a plausible-looking string that resolves to nothing.
+    #[must_use]
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Self::Explicit(path) | Self::Discovered(path) => Some(path),
+            Self::Embedded => None,
+        }
+    }
+
+    /// Whether the bytes behind this registry are inside the binary.
+    #[must_use]
+    pub const fn is_embedded(&self) -> bool {
+        matches!(self, Self::Embedded)
+    }
+
+    /// The sentence the `registry:` line shows.
+    ///
+    /// Says which registry answered *and why it was the one*, because those
+    /// are two different things a reader needs and the second is the one that
+    /// is easy to leave out. "I found this here" and "I fell back to this
+    /// because there was nothing else" support different next actions.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Explicit(path) => format!("{} (--registry)", path.display()),
+            Self::Discovered(path) => format!(
+                "{} (found by searching upward from the working directory)",
+                path.display()
+            ),
+            Self::Embedded => format!(
+                "embedded in {} {} (no specs.toml found on disk; pinned when this version was \
+                 published)",
+                crate::human::PACKAGE_NAME,
+                crate::human::TOOL_VERSION,
+            ),
+        }
+    }
+}
+
 /// nothing else.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Run {
@@ -366,8 +459,15 @@ pub struct Run {
     /// [`GatePolicy::Never`]: reporting and gating are separate decisions, and
     /// a bare `validate` reports.
     pub policy: GatePolicy,
-    /// The registry file this run resolved its specifications through.
+    /// What a diagnostic about the registry names as its document — a path
+    /// when there is one, and `specs.toml (embedded)` when the bytes are in
+    /// the binary.
     pub registry_path: String,
+    /// Which registry answered, and why that one. Rendered on the `registry:`
+    /// line by every renderer, because a reader must never have to guess
+    /// whether an embedded catalogue answered for a repository they thought
+    /// they were checking.
+    pub registry_origin: RegistryOrigin,
     /// The catalogue, filtered by `--spec` when one was given.
     pub specs: Vec<SpecSummary>,
     /// Everything examined, in the order it was examined.

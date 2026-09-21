@@ -46,7 +46,7 @@ use conform_core::{Diagnostic, GatePolicy, GateVerdict, Location, Severity, Spec
 use serde::Serialize;
 
 use crate::human::{TOOL_NAME, TOOL_VERSION};
-use crate::model::{DocumentOutcome, Run, SpecSummary};
+use crate::model::{self, DocumentOutcome, Run, SpecSummary};
 
 /// The version of this envelope's format.
 ///
@@ -68,6 +68,33 @@ pub fn render(run: &Run, out: &mut dyn Write) -> io::Result<()> {
     writeln!(out)
 }
 
+/// Where this run's registry came from.
+///
+/// `kind` is the stable word a consumer branches on — `explicit`,
+/// `discovered` or `embedded` — and `path` is the file it came from, or
+/// `null` when there was no file because the bytes are inside the binary.
+/// Absence is represented as absence here for the same reason it is
+/// everywhere else in this envelope: a plausible-looking path that resolves to
+/// nothing is worse than an honest `null`.
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistryOrigin {
+    /// `explicit`, `discovered` or `embedded`.
+    pub kind: &'static str,
+    /// The `specs.toml` this came from, or `null` when it was embedded.
+    pub path: Option<String>,
+}
+
+impl RegistryOrigin {
+    /// Map the model's origin into the envelope's.
+    #[must_use]
+    pub fn of(origin: &model::RegistryOrigin) -> Self {
+        Self {
+            kind: origin.kind(),
+            path: origin.path().map(|path| path.display().to_string()),
+        }
+    }
+}
+
 /// One run, as machine-readable as it gets.
 #[derive(Debug, Serialize)]
 pub struct Envelope {
@@ -77,8 +104,18 @@ pub struct Envelope {
     pub tool: Tool,
     /// Which subcommand was run.
     pub command: &'static str,
-    /// The registry the specifications below were resolved through.
+    /// The registry the specifications below were resolved through, as the
+    /// human rendering names it.
     pub registry: String,
+    /// Where that registry came from, and whether it was a file at all.
+    ///
+    /// Additive in `schema_version` 1: a consumer that never read this field
+    /// reads `registry` exactly as before. It is here because `registry` alone
+    /// cannot answer the question that matters when a binary carries its own
+    /// catalogue — *did an embedded copy answer for a repository I thought I
+    /// was checking* — and a consumer gating a pipeline needs to branch on
+    /// that rather than parse a sentence.
+    pub registry_origin: RegistryOrigin,
     /// What was found, in total.
     pub summary: Summary,
     /// What, if anything, that fails — a separate question from the summary,
@@ -107,7 +144,8 @@ impl Envelope {
                 version: TOOL_VERSION,
             },
             command: run.command.as_str(),
-            registry: run.registry_path.clone(),
+            registry: run.registry_origin.describe(),
+            registry_origin: RegistryOrigin::of(&run.registry_origin),
             summary: Summary {
                 outcome: outcome(run),
                 specs: run.specs.len(),

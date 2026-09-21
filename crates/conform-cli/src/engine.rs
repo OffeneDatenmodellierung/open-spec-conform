@@ -21,17 +21,21 @@ use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
 
-use conform_core::{ConformanceReport, Diagnostic, GatePolicy, Location, Validator};
+use conform_core::{
+    ConformanceReport, Diagnostic, GatePolicy, Location, Severity, SpecRef, Validator,
+};
 use conform_lexicon::LexiconValidator;
 use conform_odcs::OdcsValidator;
 use conform_odps::OdpsValidator;
-use conform_registry::Registry;
+use conform_registry::{Registry, SpecEntry};
 
 use crate::codes;
 use crate::corpus;
 use crate::discover::{self, Target};
+use crate::embedded;
 use crate::model::{
-    COMMAND_LINE, Command, DocumentOutcome, FileStandard, Run, SpecSummary, Standard,
+    COMMAND_LINE, Command, DocumentOutcome, FileStandard, RegistryOrigin, Run, SpecSummary,
+    Standard,
 };
 
 /// What one invocation asked for.
@@ -63,19 +67,24 @@ pub struct Request {
 /// the work" must not exit the same way as "I did the work and it passed".
 #[must_use]
 pub fn run(request: &Request) -> Run {
-    let registry_path = match locate_registry(request.registry.as_deref()) {
-        Ok(path) => path,
-        Err(diagnostic) => return unusable(request, "specs.toml", diagnostic),
+    let origin = locate_registry(request.registry.as_deref());
+    let display_path = match origin.path() {
+        Some(path) => path.display().to_string(),
+        None => embedded::REGISTRY_NAME.to_owned(),
     };
-    let display_path = registry_path.display().to_string();
 
-    let registry = match Registry::load_path(&registry_path) {
+    let loaded = match origin.path() {
+        Some(path) => Registry::load_path(path),
+        None => Registry::load_str(embedded::REGISTRY_TOML, embedded::REGISTRY_NAME),
+    };
+    let registry = match loaded {
         Ok(registry) => registry,
         Err(error) => {
             return Run {
                 command: request.command,
                 policy: request.policy,
                 registry_path: display_path.clone(),
+                registry_origin: origin,
                 specs: Vec::new(),
                 documents: vec![DocumentOutcome::new(
                     display_path,
@@ -91,7 +100,8 @@ pub fn run(request: &Request) -> Run {
         command: request.command,
         policy: request.policy,
         registry_path: display_path.clone(),
-        specs: summarise(&registry, request.spec.as_deref()),
+        specs: summarise(&registry, &origin, request.spec.as_deref()),
+        registry_origin: origin,
         documents: Vec::new(),
         unusable: false,
     };
@@ -240,7 +250,7 @@ fn validate(registry: &Registry, request: &Request, run: &mut Run) {
         return;
     }
 
-    let mut validators = Validators::new(registry);
+    let mut validators = Validators::new(registry, &run.registry_origin);
     let mut outcomes: Vec<DocumentOutcome> = discovery
         .targets
         .iter()
@@ -333,15 +343,17 @@ fn not_checked(id: &str, standard: Standard, cause: &ConformanceReport) -> Confo
 /// second document either.
 struct Validators<'r> {
     registry: &'r Registry,
+    origin: &'r RegistryOrigin,
     odcs: Option<Result<OdcsValidator, ConformanceReport>>,
     odps: Option<Result<OdpsValidator, ConformanceReport>>,
     odcl: Option<Result<LexiconValidator, ConformanceReport>>,
 }
 
 impl<'r> Validators<'r> {
-    const fn new(registry: &'r Registry) -> Self {
+    const fn new(registry: &'r Registry, origin: &'r RegistryOrigin) -> Self {
         Self {
             registry,
+            origin,
             odcs: None,
             odps: None,
             odcl: None,
@@ -358,8 +370,20 @@ impl<'r> Validators<'r> {
         match standard {
             FileStandard::Odcs => {
                 let slot = self.odcs.get_or_insert_with(|| {
-                    OdcsValidator::from_registry(self.registry)
-                        .map_err(conform_odcs::SchemaError::into_report)
+                    if self.origin.is_embedded() {
+                        embedded_schema(
+                            self.registry,
+                            "odcs",
+                            conform_odcs::codes::SCHEMA_PROVENANCE_FAILED,
+                        )
+                        .and_then(|s| {
+                            OdcsValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
+                                .map_err(conform_odcs::SchemaError::into_report)
+                        })
+                    } else {
+                        OdcsValidator::from_registry(self.registry)
+                            .map_err(conform_odcs::SchemaError::into_report)
+                    }
                 });
                 match slot {
                     Ok(validator) => Ok(validator),
@@ -368,8 +392,20 @@ impl<'r> Validators<'r> {
             }
             FileStandard::Odps => {
                 let slot = self.odps.get_or_insert_with(|| {
-                    OdpsValidator::from_registry(self.registry)
-                        .map_err(conform_odps::SchemaError::into_report)
+                    if self.origin.is_embedded() {
+                        embedded_schema(
+                            self.registry,
+                            "odps",
+                            conform_odps::codes::SCHEMA_PROVENANCE_FAILED,
+                        )
+                        .and_then(|s| {
+                            OdpsValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
+                                .map_err(conform_odps::SchemaError::into_report)
+                        })
+                    } else {
+                        OdpsValidator::from_registry(self.registry)
+                            .map_err(conform_odps::SchemaError::into_report)
+                    }
                 });
                 match slot {
                     Ok(validator) => Ok(validator),
@@ -378,8 +414,20 @@ impl<'r> Validators<'r> {
             }
             FileStandard::Odcl => {
                 let slot = self.odcl.get_or_insert_with(|| {
-                    LexiconValidator::from_registry(self.registry)
-                        .map_err(conform_lexicon::SchemaError::into_report)
+                    if self.origin.is_embedded() {
+                        embedded_schema(
+                            self.registry,
+                            "odcl",
+                            conform_lexicon::codes::SCHEMA_PROVENANCE_FAILED,
+                        )
+                        .and_then(|s| {
+                            LexiconValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
+                                .map_err(conform_lexicon::SchemaError::into_report)
+                        })
+                    } else {
+                        LexiconValidator::from_registry(self.registry)
+                            .map_err(conform_lexicon::SchemaError::into_report)
+                    }
                 });
                 match slot {
                     Ok(validator) => Ok(validator),
@@ -388,6 +436,140 @@ impl<'r> Validators<'r> {
             }
         }
     }
+}
+
+/// What an adapter needs to be built from bytes, once it has earned them.
+struct EmbeddedSchema {
+    /// The schema text, compiled into this binary.
+    text: &'static str,
+    /// Which specification, at which version, the report will cite.
+    spec: SpecRef,
+    /// The sentence every report carries under the adapter's `…904` code.
+    provenance: String,
+    /// What a finding names as the schema it was checked against.
+    name: String,
+}
+
+/// Build the inputs for an embedded validator, refusing unless the bytes pass
+/// the digest gate.
+///
+/// This is `OdcsValidator::from_registry` and its two siblings, step for step,
+/// with the filesystem read replaced by a lookup in [`embedded::ARTEFACTS`]:
+/// find the entry, **re-hash the bytes against the digest the registry
+/// records**, refuse on failure under the adapter's own
+/// `SCHEMA_PROVENANCE_FAILED` code with the registry's diagnostic kept
+/// underneath, and only then hand the text over.
+///
+/// The order is the point. A validator built before the gate is a validator
+/// that issues verdicts against bytes nobody checked, and an embedded copy
+/// that skipped the check would be a *worse* false green than the on-disk one
+/// it replaced — the reader cannot go and look at the file to see for
+/// themselves, because there is no file.
+fn embedded_schema(
+    registry: &Registry,
+    spec_id: &str,
+    provenance_failed: &'static str,
+) -> Result<EmbeddedSchema, ConformanceReport> {
+    let source = Location::document(registry.source().clone());
+
+    let Some(index) = registry.entries().iter().position(|e| e.id == spec_id) else {
+        return Err(single(
+            Diagnostic::error(
+                provenance_failed,
+                source,
+                format!(
+                    "the embedded registry holds no `{spec_id}` entry, so there is no schema to \
+                     validate against"
+                ),
+            )
+            .with_help(
+                "pass `--registry <path>` to check against a repository whose catalogue has the \
+                 entry",
+            ),
+        ));
+    };
+    let entry = &registry.entries()[index];
+
+    let Some(text) = embedded::artefact(&entry.vendored_path) else {
+        return Err(single(
+            Diagnostic::error(
+                provenance_failed,
+                source,
+                format!(
+                    "the embedded registry records `{}` for `{spec_id}`, and this binary carries \
+                     no copy of those bytes",
+                    entry.vendored_path
+                ),
+            )
+            .with_help(
+                "pass `--registry <path>` — an embedded catalogue can only speak for the bytes \
+                 compiled into it",
+            ),
+        ));
+    };
+
+    // The gate. Nothing below this line runs against bytes that did not hash to
+    // what the registry records for them.
+    let integrity = conform_registry::verify_bytes(
+        index,
+        entry,
+        text.as_bytes(),
+        embedded::artefact_name(&entry.vendored_path),
+    );
+    if integrity.severity >= Severity::Error {
+        let mut report = single(
+            Diagnostic::error(
+                provenance_failed,
+                integrity.location.clone(),
+                format!(
+                    "refusing to validate against the embedded `{spec_id}` schema: its \
+                     provenance check failed"
+                ),
+            )
+            .with_help(
+                "a verdict issued against a schema nobody can trace to a published standard is \
+                 not a conformance verdict — this build's bytes and its catalogue disagree",
+            ),
+        );
+        report.push(integrity);
+        return Err(report);
+    }
+
+    let mut spec = SpecRef::new(entry.id.clone());
+    if let Some(version) = &entry.version {
+        spec = spec.with_version(version.clone());
+    }
+
+    // Says *embedded*, and says what that does not cover. A sentence reading
+    // the same as the on-disk one would be claiming a check this build cannot
+    // perform: both sides of the comparison were frozen into the executable at
+    // the same moment, so it speaks for this binary and for no file on disk.
+    let provenance = match &entry.pinned_ref {
+        Some(pinned) => format!(
+            "bytes of `{}` embedded in {} {} at publish time and re-hashed here against the \
+             digest its catalogue records for upstream pin `{pinned}`; the catalogue is embedded \
+             alongside them, so this says nothing about any `specs.toml` on disk",
+            entry.vendored_path,
+            crate::human::PACKAGE_NAME,
+            crate::human::TOOL_VERSION,
+        ),
+        None => format!(
+            "bytes of `{}` embedded in {} {} at publish time and re-hashed here against the \
+             digest its catalogue records; the entry records no upstream pin, and the catalogue \
+             is embedded alongside the bytes, so this says nothing about any `specs.toml` on disk",
+            entry.vendored_path,
+            crate::human::PACKAGE_NAME,
+            crate::human::TOOL_VERSION,
+        ),
+    };
+
+    let name = embedded::artefact_name(&entry.vendored_path);
+    Ok(EmbeddedSchema {
+        text,
+        spec,
+        provenance,
+        name,
+    })
 }
 
 /// The one thing the engine asks of a single-document adapter.
@@ -427,14 +609,61 @@ impl TextValidator for LexiconValidator {
 /// and it is what lets the spec pane show the pin and the drift status of any
 /// specification the moment it is selected, which is the "never more than two
 /// keystrokes away" requirement in plan §4.2.
-fn summarise(registry: &Registry, only: Option<&str>) -> Vec<SpecSummary> {
+fn summarise(registry: &Registry, origin: &RegistryOrigin, only: Option<&str>) -> Vec<SpecSummary> {
     registry
         .entries()
         .iter()
         .enumerate()
         .filter(|(_, entry)| only.is_none_or(|id| entry.id == id))
-        .map(|(index, entry)| SpecSummary::new(entry, registry.verify_entry(index, entry)))
+        .map(|(index, entry)| {
+            SpecSummary::new(entry, verify_artefact(registry, origin, index, entry))
+        })
         .collect()
+}
+
+/// Re-hash one entry's artefact, wherever this run's artefacts live.
+///
+/// On disk this is `conform-registry`'s own `verify_entry`. Embedded, it is
+/// that crate's `verify_bytes` — the *same* comparison, deliberately: the
+/// digest gate is the reason a verdict from this tool means anything, and two
+/// implementations of it would be one implementation and one place for it to
+/// quietly become decoration.
+///
+/// An artefact the registry records and this build does not carry is reported
+/// as [`ARTEFACT_MISSING`](conform_registry::codes::ARTEFACT_MISSING), which is
+/// what it is. A pass would be a lie about bytes nobody has.
+fn verify_artefact(
+    registry: &Registry,
+    origin: &RegistryOrigin,
+    index: usize,
+    entry: &SpecEntry,
+) -> Diagnostic {
+    if !origin.is_embedded() {
+        return registry.verify_entry(index, entry);
+    }
+    match embedded::artefact(&entry.vendored_path) {
+        Some(text) => conform_registry::verify_bytes(
+            index,
+            entry,
+            text.as_bytes(),
+            embedded::artefact_name(&entry.vendored_path),
+        ),
+        None => Diagnostic::error(
+            conform_registry::codes::ARTEFACT_MISSING,
+            Location::document(embedded::artefact_name(&entry.vendored_path))
+                .with_pointer(format!("/spec/{index}/sha256")),
+            format!(
+                "`{}` records `vendored_path = \"{}\"`, and this binary carries no embedded \
+                 copy of it",
+                entry.id, entry.vendored_path
+            ),
+        )
+        .with_help(
+            "pass `--registry <path>` to check against a repository that has the artefact — an \
+             embedded catalogue can only speak for the bytes compiled into it",
+        )
+        .with_spec_ref(conform_registry::spec_ref()),
+    }
 }
 
 /// The identifiers a registry does hold, for the help on an unknown `--spec`.
@@ -453,52 +682,26 @@ fn known_ids(registry: &Registry) -> String {
 /// current directory, the way every other repository-rooted tool finds its
 /// configuration — so `conform` works from a subdirectory, which is where
 /// people actually run things.
-fn locate_registry(explicit: Option<&Path>) -> Result<PathBuf, Box<Diagnostic>> {
+fn locate_registry(explicit: Option<&Path>) -> RegistryOrigin {
     if let Some(path) = explicit {
-        return Ok(path.to_path_buf());
+        return RegistryOrigin::Explicit(path.to_path_buf());
     }
 
-    let start = env::current_dir().map_err(|error| {
-        Box::new(Diagnostic::error(
-            codes::REGISTRY_NOT_FOUND,
-            Location::document("specs.toml"),
-            format!("cannot read the current directory: {error}"),
-        ))
-    })?;
-
-    for directory in start.ancestors() {
-        let candidate = directory.join("specs.toml");
-        if candidate.is_file() {
-            return Ok(candidate);
+    // A working directory that cannot be read is not a reason to refuse: it
+    // means the search cannot happen, and the search is only the second of
+    // three answers. Falling through to the embedded catalogue is what the
+    // precedence says to do when nothing on disk answers, and this is one of
+    // the ways nothing on disk answers.
+    if let Ok(start) = env::current_dir() {
+        for directory in start.ancestors() {
+            let candidate = directory.join("specs.toml");
+            if candidate.is_file() {
+                return RegistryOrigin::Discovered(candidate);
+            }
         }
     }
 
-    Err(Box::new(
-        Diagnostic::error(
-            codes::REGISTRY_NOT_FOUND,
-            Location::document("specs.toml"),
-            format!(
-                "no `specs.toml` in {} or any directory above it",
-                start.display()
-            ),
-        )
-        .with_help(
-            "run from inside a repository that has one, or pass `--registry <path>` — without \
-             a registry nothing can say where a vendored specification came from",
-        ),
-    ))
-}
-
-/// A run that could not happen, carrying the one diagnostic explaining it.
-fn unusable(request: &Request, document: &str, diagnostic: Box<Diagnostic>) -> Run {
-    Run {
-        command: request.command,
-        policy: request.policy,
-        registry_path: document.to_owned(),
-        specs: Vec::new(),
-        documents: vec![DocumentOutcome::new(document, None, single(*diagnostic))],
-        unusable: true,
-    }
+    RegistryOrigin::Embedded
 }
 
 /// A report holding one diagnostic.
