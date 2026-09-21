@@ -62,6 +62,39 @@ jobs:
       - name: cargo test (all features)
         run: cargo test --workspace --all-features
 
+  msrv:
+    name: cargo check (MSRV 1.96)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96
+      - uses: Swatinem/rust-cache@v2
+
+      # `rust-version = "1.96"` in the workspace manifest is a promise made on
+      # behalf of every crate here, and until this job existed nothing kept it:
+      # every other job on this page installs `stable`, there is no
+      # `rust-toolchain.toml` anywhere in the tree, and so the number was a
+      # claim rather than a fact — one that would have been discovered wrong by
+      # whoever pinned an older compiler and tried to build, after publication.
+      #
+      # `--all-features`, because a feature-gated module is precisely where a
+      # construct newer than the declared minimum hides: the default build
+      # would stay green while `conform-ffi`'s optional code did not compile on
+      # the compiler its own manifest says is enough.
+      #
+      # `--locked`, so a green tick here is a statement about the versions
+      # `Cargo.lock` pins. A dependency is free to raise its own MSRV in a
+      # patch release; without this, that arrives as an unexplained red tick on
+      # an unrelated pull request instead of as a decision taken deliberately
+      # when the lockfile is next updated.
+      #
+      # `check` rather than `build` or `test`: the question this job answers is
+      # whether the declared compiler can compile this source, and the rest of
+      # this page already answers everything else. Three other places carry the
+      # same number and have to move together — `rust-version` in Cargo.toml,
+      # `msrv` in clippy.toml, and website/build.sh.
+      - run: cargo check --workspace --all-features --locked
+
   deny:
     name: cargo deny
     runs-on: ubuntu-latest
