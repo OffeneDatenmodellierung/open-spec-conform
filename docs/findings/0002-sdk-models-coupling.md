@@ -192,3 +192,75 @@ it trims and re-renders, so `SecondaryDomains:[A,  B]` round-trips as
 `SecondaryDomains:[A, B]`. That is a normalisation the SDK may want and a
 lossless model crate must not do silently. The parse is worth keeping — as an
 opt-in helper over a `&str`, not as the storage type.
+
+---
+
+## 6. What was actually built, and where this stopped
+
+### Tier 1 — done, four crates
+
+| Crate | Upstream source | Schema corrected against | Fixture corpus |
+| --- | --- | --- | --- |
+| `conform-model-odcs` | `models/odcs/{contract,property,schema,supporting}.rs` | `schemas/odcs-json-schema-v3.1.0.json` | copied from `conform-odcs`, drift-tested |
+| `conform-model-odps` | `models/odps.rs` | `schemas/odps-json-schema-v1.0.0.json` | copied from `conform-odps`, drift-tested |
+| `conform-model-cads` | `models/cads.rs` | `schemas/cads.schema.json` | authored; conformance checked by hand |
+| `conform-model-dbmv` | `models/dbmv.rs` | **none exists** | authored |
+
+Each depends on `serde`, `serde_json` and `indexmap`, and on nothing else.
+None depends on `conform-core`, on an adapter, or on `jsonschema`. No validator
+was rewired: the three schema-driven adapters parse and validate exactly as
+they did, and their differential oracle tests against `data-modelling-sdk` are
+untouched.
+
+Each crate's README lists its corrections and cuts in full. The pattern across
+all four is worth stating once: **the upstream models disagreed with the
+schemas this repository already vendors**, in ways that would have silently
+dropped or mis-keyed real data. ODCS could not deserialize its own conformant
+fixtures (`support` modelled as an object where the schema publishes an array;
+`name` required where the schema does not require it). ODPS refused
+`status: mothballed`, which is conformant. CADS wrote `openapiSpecs` where the
+schema publishes `openApiSpecs`. And none of the three root types in ODCS, nor
+any of the fourteen in ODPS, nor any of the twenty-two in CADS, carried a
+`flatten`ed catch-all — so every key the model did not name was dropped.
+
+That last point is the one to carry back to the SDK. `models/odcs/supporting.rs`
+*did* have `extra` on eleven of its supporting types; the omission on
+`ODCSContract`, `SchemaObject` and `Property` looks like an oversight rather
+than a decision, and it is the difference between a round-trip and a
+truncation.
+
+### Tier 2 — resolved as unnecessary, not skipped
+
+Only `tag.rs` was ever reachable from Tier 1, and §5 argues it should not be:
+all three standards publish `tags` as an array of strings, and `Tag::from_str`
+normalises. All four Tier 1 crates therefore store `Vec<String>`, and no Tier 2
+crate exists because nothing needs one. `enums.rs`, `column.rs` and
+`relationship.rs` were named in the brief as Tier 2 candidates; the import
+graph puts all three in Tier 3.
+
+The `Simple`/`Pair`/`List` parse is a good idea that was in the wrong place. It
+is worth reviving as an opt-in helper over a `&str` — `Tag::parse(s)` returning
+a view, with the `String` staying the storage type — and that is a small,
+self-contained piece of work.
+
+### Tier 3 — not ported, deliberately
+
+Stopped here, and this is the honest boundary rather than an exhaustion point.
+§3 and §4 set out the case: `openapi.rs`/`bpmn.rs`/`dmn.rs` are not models of
+those standards and should not be published as though they were;
+`conform-model-*` is the wrong prefix for `sketch`, `decision`, `knowledge` and
+`workspace`; `dmsdk-model-*` is the right one if they move; and the argument
+that they should not move at all is in §4.
+
+That objection is raised for a decision, not asserted as one. If the answer
+comes back that Tier 3 moves anyway, the work is well-defined — one
+`dmsdk-model` crate, 6,155 lines, no splitting, because the cluster does not
+decompose — and nothing in Tier 1 blocks it.
+
+### Nothing left broken
+
+`cargo fmt --all --check`, `cargo clippy --workspace --all-targets
+--all-features -- -D warnings` and `cargo deny --all-features check` are all
+clean. `cargo test --workspace` went from 284 to 350 passing, `--all-features`
+from 288 to 354, with nothing ignored and no assertion loosened.
+`cargo tree -p conform-core` is still a single node.
