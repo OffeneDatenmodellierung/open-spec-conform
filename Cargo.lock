@@ -337,6 +337,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "conform-model-cads"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
+ "serde_norway",
+]
+
+[[package]]
 name = "conform-model-odcs"
 version = "0.1.0"
 dependencies = [

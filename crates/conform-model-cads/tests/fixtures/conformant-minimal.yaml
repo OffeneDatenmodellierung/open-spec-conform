@@ -1,0 +1,11 @@
+# The smallest document the vendored CADS schema accepts: the six properties
+# it lists as `required`, and nothing else.
+#
+# Authored against schemas/cads.schema.json as vendored and pinned by
+# specs.toml. See this crate's README.
+apiVersion: v1.0
+kind: DataPipeline
+id: 3f9b8b41-0f2c-4f75-a15e-f6b1f2c6a4d9
+name: orders-etl
+version: 0.1.0
+status: draft
