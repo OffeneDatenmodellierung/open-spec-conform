@@ -111,6 +111,23 @@ pub const NO_DESCRIPTION: &str = "ODCS204";
 /// which is exactly why a rule here earns its place.
 pub const UNCONVENTIONAL_STATUS: &str = "ODCS205";
 
+/// Two members of one array carry the same `id`, and `$defs/StableId` says
+/// they may not.
+///
+/// The schema's own description of that definition is *"Stable technical
+/// identifier for references. Must be unique within its containing array."* —
+/// prose, and prose only: the definition it is attached to constrains nothing
+/// but a `pattern`, and neither `/properties/schema` nor `/properties/servers`
+/// carries `uniqueItems`. So a document with two schema objects sharing an
+/// `id` is a document the published schema accepts and the published schema's
+/// own sentence forbids, which is precisely the gap a rule here exists to
+/// close.
+///
+/// A warning rather than an error, like everything else in this band: the
+/// schema is the authority on what conforms, and this crate does not add
+/// conformance requirements of its own.
+pub const DUPLICATE_STABLE_ID: &str = "ODCS206";
+
 // ---------------------------------------------------------------------------
 // ODCS9xx — the validator's own setup. These describe this repository's
 // configuration, not the document under test.
