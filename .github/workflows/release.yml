@@ -1,0 +1,227 @@
+# Publishing to crates.io.
+#
+# Publishing is irreversible. A version can be yanked but never deleted, and
+# the number is burned for good: if a broken `conform-core 0.1.0` goes out,
+# there is no second `0.1.0`. Everything below is arranged around that one
+# fact, so this workflow is deliberately awkward to fire and harmless to press
+# by accident.
+#
+#   * `workflow_dispatch` only. No `push`, no tag trigger, no schedule. Merging
+#     to `main` publishes nothing, ever.
+#   * `dry_run` defaults to **true**. The default press runs
+#     `cargo publish --dry-run`, which contacts no registry with credentials
+#     and uploads nothing.
+#   * A real publish additionally requires typing `publish` into `confirm`.
+#     Unticking one box is not enough.
+#   * Nothing publishes unless `gates` is green first — the same fmt, clippy,
+#     test and `cargo deny` checks CI runs, including the two tests that
+#     decide whether a tarball is fit to publish at all.
+#   * `CARGO_REGISTRY_TOKEN` is bound to the single step that uploads, not to
+#     the workflow, the job, or the dry run.
+#
+# Actions are pinned by commit SHA rather than by tag. A tag is mutable: the
+# author of a pinned-by-tag action can change what `@v4` means after review,
+# and this is the workflow that holds a registry token. The tag each SHA
+# corresponded to is in the comment beside it, so upgrading stays legible.
+#
+# This workflow drives `cargo publish` directly rather than `release-plz`,
+# because the first release has to go out one crate at a time in dependency
+# order and that sequence should be readable here rather than inferred from a
+# tool's behaviour. `release-plz.toml` still governs changelog and version
+# automation; see docs/PUBLISHING.md for how the two fit together and for the
+# recommended `release-plz release-pr` job, which opens a pull request and
+# publishes nothing.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      crates:
+        description: >-
+          Which crates to publish, space-separated, in dependency order — or
+          "all" for the full sequence. The first release must be done a few at
+          a time: a crate cannot be verified until everything it depends on is
+          already on crates.io.
+        type: string
+        default: all
+      dry_run:
+        description: >-
+          Dry run. Leave TICKED to publish nothing. Untick only to upload to
+          crates.io for real, and see `confirm` below.
+        type: boolean
+        default: true
+      confirm:
+        description: >-
+          Type the word `publish` to allow a real upload. Ignored on a dry run.
+        type: string
+        default: ""
+
+# Read-only by default. The publish job does not write to this repository:
+# tags, changelogs and GitHub releases are `release-plz`'s job, not this one.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Everything that decides whether this tree is fit to publish. `publish`
+  # needs this job, so a red gate is not a warning on a release run — it is the
+  # end of it.
+  gates:
+    name: publish-readiness gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: taiki-e/install-action@94c31af3204a9f15ab40b35ad084410b905bbc73 # v2
+        with:
+          tool: cargo-deny
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: cargo test (default features)
+        run: cargo test --workspace --locked
+
+      - name: cargo test (all features)
+        run: cargo test --workspace --all-features --locked
+
+      # `--all-features` is global and must precede the subcommand.
+      - name: cargo deny
+        run: cargo deny --all-features check
+
+      # Both of these already ran inside `cargo test --workspace` above. They
+      # are named again, on their own, because they are the two tests that are
+      # specifically about what a tarball contains, and a release log should
+      # say out loud that they were checked rather than leave a reader to
+      # infer it from a count. If a refactor ever moves them, this step fails
+      # loudly instead of quietly checking nothing.
+      - name: every crate ships its licence text
+        run: cargo test -p conform-web --test every_crate_ships_its_licence --locked
+
+      - name: no crate publishes a forked copy of a vendored artefact
+        run: cargo test -p conform-web --test vendored_bytes_are_packaged_not_forked --locked
+
+  publish:
+    name: ${{ inputs.dry_run && 'dry run' || 'PUBLISH TO CRATES.IO' }}
+    needs: gates
+    runs-on: ubuntu-latest
+
+    # A GitHub Environment, so that a real upload can be put behind required
+    # reviewers in repository settings. Referencing one that does not exist
+    # creates it unprotected, so this is an invitation rather than a guarantee
+    # — see docs/PUBLISHING.md for the two settings worth turning on.
+    environment: ${{ inputs.dry_run && 'crates-io-dry-run' || 'crates-io' }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      # The word, or nothing happens. Read through the environment rather than
+      # interpolated into the script, so that what a dispatcher typed is data
+      # to this shell and never syntax.
+      - name: Require the confirmation word for a real publish
+        if: ${{ !inputs.dry_run }}
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "publish" ]; then
+            echo "::error::A real publish needs the confirm input set to exactly the word publish. Nothing was uploaded."
+            exit 1
+          fi
+
+      # Resolve the requested crates against the known publish order, and
+      # refuse anything that is not on it. This validates the input — again,
+      # read from the environment, never interpolated — and it is also what
+      # keeps the order in one place rather than in a dispatcher's memory.
+      #
+      # `conform-web` is deliberately absent: it carries `publish = false`,
+      # being the generator for the site rather than a library anybody depends
+      # on.
+      - name: Work out the sequence
+        id: plan
+        env:
+          REQUESTED: ${{ inputs.crates }}
+        run: |
+          set -euo pipefail
+          ORDER="conform-core conform-registry conform-odcs conform-odps conform-okf conform-lexicon conform-ffi conform-cli"
+
+          if [ "$REQUESTED" = "all" ]; then
+            SEQUENCE="$ORDER"
+          else
+            SEQUENCE=""
+            # Walk the canonical order and keep what was asked for, so the
+            # result is in dependency order however the input was spelled.
+            for known in $ORDER; do
+              for want in $REQUESTED; do
+                if [ "$known" = "$want" ]; then SEQUENCE="${SEQUENCE:+$SEQUENCE }$known"; fi
+              done
+            done
+            # Anything left unmatched is a typo or a crate that must not be
+            # published, and either way this is not the moment to guess.
+            for want in $REQUESTED; do
+              case " $ORDER " in
+                *" $want "*) ;;
+                *) echo "::error::'$want' is not a publishable crate of this workspace. The order is: $ORDER"; exit 1 ;;
+              esac
+            done
+          fi
+
+          if [ -z "$SEQUENCE" ]; then
+            echo "::error::No crates selected."
+            exit 1
+          fi
+          echo "sequence=$SEQUENCE" >> "$GITHUB_OUTPUT"
+          echo "Sequence: $SEQUENCE"
+
+      # No token in this step's environment. `--dry-run` packages and runs the
+      # verification build; it uploads nothing and needs no credential.
+      #
+      # Before the first release this is expected to fail from
+      # `conform-registry` onward, because a crate cannot be verified while its
+      # path dependencies are absent from the registry. That is the registry's
+      # ordering rule showing through, not a defect in this tree — publish the
+      # first crate, then dry-run the next. docs/PUBLISHING.md walks it.
+      - name: cargo publish --dry-run
+        if: ${{ inputs.dry_run }}
+        env:
+          SEQUENCE: ${{ steps.plan.outputs.sequence }}
+        run: |
+          set -euo pipefail
+          for crate in $SEQUENCE; do
+            echo "::group::cargo publish --dry-run -p $crate"
+            cargo publish --dry-run --locked -p "$crate"
+            echo "::endgroup::"
+          done
+          echo "Dry run complete. Nothing was uploaded."
+
+      # The only step in this workflow that can reach crates.io with a
+      # credential, and the only one the token is bound to. Reached only when
+      # `dry_run` is false, `confirm` said `publish`, and every gate was green.
+      #
+      # `cargo publish` waits for each crate to appear in the index before
+      # returning, so the next iteration can resolve it. If a crate in the
+      # middle fails, earlier ones are already permanent — see the
+      # "half-published workspace" section of docs/PUBLISHING.md, which is
+      # written for exactly that morning.
+      - name: cargo publish
+        if: ${{ !inputs.dry_run }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          SEQUENCE: ${{ steps.plan.outputs.sequence }}
+        run: |
+          set -euo pipefail
+          for crate in $SEQUENCE; do
+            echo "::group::cargo publish -p $crate"
+            cargo publish --locked -p "$crate"
+            echo "::endgroup::"
+          done
