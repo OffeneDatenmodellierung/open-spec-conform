@@ -47,6 +47,15 @@ use crate::model::{COMMAND_LINE, Command, DocumentOutcome, Run, SpecSummary};
 
 /// What this binary calls itself, and which version it is.
 pub const TOOL_NAME: &str = "conform";
+
+/// The crate this binary is published as.
+///
+/// Distinct from [`TOOL_NAME`] on purpose: the command is `conform` and the
+/// package is `conform-cli`, and the two appear in different sentences. A
+/// reader told that bytes were "embedded in conform 0.1.0" cannot act on it;
+/// told `conform-cli 0.1.0`, they can pin it, upgrade it, or go and read what
+/// that version vendored.
+pub const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
 /// This crate's version, as the `--json` envelope and the header report it.
 pub const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
 

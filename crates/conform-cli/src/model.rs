@@ -443,7 +443,7 @@ impl RegistryOrigin {
             Self::Embedded => format!(
                 "embedded in {} {} (no specs.toml found on disk; pinned when this version was \
                  published)",
-                crate::human::TOOL_NAME,
+                crate::human::PACKAGE_NAME,
                 crate::human::TOOL_VERSION,
             ),
         }

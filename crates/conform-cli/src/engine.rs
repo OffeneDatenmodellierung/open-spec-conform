@@ -531,7 +531,7 @@ fn embedded_schema(
              digest its catalogue records for upstream pin `{pinned}`; the catalogue is embedded \
              alongside them, so this says nothing about any `specs.toml` on disk",
             entry.vendored_path,
-            crate::human::TOOL_NAME,
+            crate::human::PACKAGE_NAME,
             crate::human::TOOL_VERSION,
         ),
         None => format!(
@@ -539,7 +539,7 @@ fn embedded_schema(
              digest its catalogue records; the entry records no upstream pin, and the catalogue \
              is embedded alongside the bytes, so this says nothing about any `specs.toml` on disk",
             entry.vendored_path,
-            crate::human::TOOL_NAME,
+            crate::human::PACKAGE_NAME,
             crate::human::TOOL_VERSION,
         ),
     };
