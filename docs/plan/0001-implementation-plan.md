@@ -931,6 +931,92 @@ the prose into claiming something untrue without the type changing under it. A
 box that pretended to validate would be worse than the sentence that says it
 cannot.
 
+**Superseded by §6.5**, which is the phase this section asked for. Both
+blockers were answered rather than worked around; the sentence shipped here is
+now the fallback for a build that produced no module, rather than a statement
+about what can be built at all.
+
+---
+
+### 6.5 Correction — the demo is wired, and the guarantee is narrowed
+
+§6.4 named two blockers and shipped `Demo::NotWired` rather than a box that
+pretends. Both are now answered, and this records how — with what was run, in
+the same spirit as the section above.
+
+**The filesystem.** `conform-ffi` gained an optional `wasm` feature.
+`src/embedded.rs` `include_str!`s `specs.toml` and the two vendored schemas,
+parses the registry with `Registry::load_str`, and re-hashes the embedded bytes
+with `conform_registry::sha256_hex` before compiling anything — exactly the
+resolution §6.4 specified, including that no constructor takes schema bytes
+from the caller. One thing that section did not anticipate: `include_str!`
+needs a *literal* path, which is the one specification fact this repository
+cannot read from the registry. It is therefore compared against the entry's own
+`vendored_path`, so a re-vendoring that renames the artefact fails construction
+instead of silently validating against the previous version's bytes.
+
+Its honest limitation is the one §6.4 asked for in writing, and it is on every
+report the module produces, under `ODCS904`/`ODPS904`: the registry and the
+bytes are frozen into the same artefact, so the check catches a registry edited
+without re-hashing and **cannot speak for the files on disk today**. That
+remains `conform registry verify`'s job in CI.
+
+**The panic guarantee.** Not fixed — *narrowed, in writing, at the boundary*,
+which is the second of the two options §6.4 left open. The C ABI keeps
+`catch_unwind` and keeps `conform_self_test_panic`. The `wasm` binding
+deliberately exports **no** self-test, because a function shaped like "prove
+the panic was caught" is a claim, and on this target it is a false one. What it
+exports instead is `panicContract()`, which returns the contract as a string
+out of the compiled artefact, and `demonstratePanicIsFatal()`, which panics and
+does not return. The page displays the module's sentence rather than its own,
+so the claim and the behaviour cannot drift apart.
+
+The contract was **measured, and the first draft of it was wrong**.
+`tools/wasm/probe.mjs` traps on purpose and then calls back in:
+
+| Probe | Result |
+|---|---|
+| `cargo build -p conform-ffi --features wasm --target wasm32-unknown-unknown --release` | builds; 3,112,486-byte module after `wasm-bindgen`, 960,563 gzipped |
+| `conformVersion()` | `0.1.0` |
+| `reachableSpecIds()` | `odcs`, `odps` — read from what is embedded, not a list |
+| `new ConformValidator("odcs")` | builds, with no filesystem; digest re-checked |
+| `validate(…)` on `faulty-many-faults.yaml` | 13 diagnostics, worst severity `error` |
+| `new ConformValidator("okf")` | throws, naming what this build does carry |
+| `demonstratePanicIsFatal()` | throws `RuntimeError: unreachable` |
+| **the same instance, afterwards** | **still answers — `conformVersion()` returns `0.1.0`** |
+
+The last row is the correction. The contract string originally said every later
+call throws; it does not, because WebAssembly does not stop an instance that
+traps. That makes the situation *worse* rather than better — the panicking
+call's destructors never ran and nothing reports it — so the contract now says
+a panic is fatal whether or not the instance notices, and the probe records the
+aftermath as an observation rather than asserting either outcome.
+
+**The page.** `Demo` gained a `Wired` variant, and which variant appears is a
+measurement: `Demo::look_for` stats the two artefacts and reports what it
+found. `website/build.sh` therefore treats the WebAssembly step as *allowed to
+fail* — an environment without the target or the `wasm-bindgen` CLI still
+deploys, and the page says which files it went looking for. The standards in
+the picker, the version and the panic sentence are all read from the module at
+run time; the generated HTML contains none of them.
+
+Driven in headless Chrome against the real generated page, not only in Node:
+the module loads, the picker fills from `reachableSpecIds()`, a faulty contract
+produces 8 errors, 4 warnings and a note, and a document whose `status` field
+is `<img src=x onerror=…><script>…</script>` renders as text — no `img`, no
+`script`, no global set. The first attempt failed honestly rather than
+silently, with `Failed to resolve module specifier`, because the href was
+written bare instead of `./`-prefixed; that the panel *showed* the error is why
+it was a two-minute problem.
+
+**What remains true from §6.4.** No node, no npm and no bundler appear in this
+repository, and `cargo test --workspace` needs none of them. `wasm-bindgen` is
+an optional dependency of one crate and reaches nobody who does not ask for it
+— `Cargo.lock` grew exactly one line, because `jsonschema → ahash → getrandom`
+had already put that crate in the graph for wasm targets. The `wasm-bindgen`
+CLI is a *tool*, in `tools/wasm/` alongside `tools/headergen` and
+`tools/sanitise`, outside the cargo workspace.
+
 ---
 
 ## 7. Workspace, versioning and release

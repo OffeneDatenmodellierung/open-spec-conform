@@ -49,6 +49,23 @@ default = []
 # `cargo test --workspace`.
 header-check = []
 
+# A `wasm-bindgen` binding, for a host that has no filesystem and no
+# unwinding.
+#
+# NOT a default feature, and not one the C ABI knows about. With it off this
+# crate is byte-for-byte the crate it was before: no `wasm-bindgen` in the
+# tree, no embedded schema bytes in the artefact, and
+# `conform_self_test_panic` still proving the panic net under every
+# `extern "C"` entry point. `tests/the_wasm_feature_is_additive.rs` holds that
+# to more than a promise.
+#
+# What it adds is `src/wasm.rs`: a second, *smaller* surface that does not
+# claim the one guarantee this crate cannot keep on `wasm32-unknown-unknown`.
+# See that module for the panic contract in full, and `src/embedded.rs` for
+# why the schema bytes are frozen into the artefact rather than taken from
+# JavaScript.
+wasm = ["dep:wasm-bindgen"]
+
 # Compiling and running `tests/smoke/conform_smoke.c` against the built
 # library. A marker feature with no dependencies: what it gates is the
 # *presence of a C toolchain*, which cargo cannot express and which a plain
@@ -82,6 +99,16 @@ conform-odps = { path = "../conform-odps", version = "0.1.0" }
 # at zero, which is NFR-001.
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# The `wasm` feature and nothing else. Optional, so `cargo tree -p conform-ffi`
+# without `--features wasm` does not mention it — which is the property
+# `deny.toml`'s note about this crate exists to protect, and the one
+# `tests/the_wasm_feature_is_additive.rs` measures rather than assumes.
+#
+# It is already in `Cargo.lock` at this version: `jsonschema` reaches it
+# through `ahash -> getrandom` on wasm targets, so naming it here adds no crate
+# to the graph that `cargo deny --all-features` was not already seeing.
+wasm-bindgen = { version = "0.2.128", optional = true }
 
 [dev-dependencies]
 # The tests read the boundary's JSON back rather than string-matching it, for
