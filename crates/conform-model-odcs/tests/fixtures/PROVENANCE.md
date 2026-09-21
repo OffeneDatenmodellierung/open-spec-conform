@@ -7,7 +7,11 @@ differential oracle test. Only the `conformant-*` files are copied: the
 `faulty-*` ones exist to be rejected by a validator, which is not what this
 crate does.
 
-Taken at `f39e0d610a62b2838d307cbdae7709bd8cfa73aa` (branch `feat/typed-models`).
+Taken at `7766cae770763d537e368f78fe42f90bc66bee37` — the commit that last wrote those bytes, verified with
+`git log -1 -- crates/conform-odcs/tests/fixtures/` and contained in
+`origin/main`:
+
+    7766cae  test(conform-odcs,conform-odps): the differential tests, and their controls
 
 ## Why copies and not a path into the sibling crate
 
