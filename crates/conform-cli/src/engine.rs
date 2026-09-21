@@ -293,17 +293,28 @@ fn check(target: &Target, validators: &mut Validators<'_>) -> DocumentOutcome {
     }
 }
 
-/// An OKF bundle: conformance and hygiene, merged.
+/// An OKF bundle: conformance and hygiene, merged — and code syntax too, when
+/// this binary was built with a `syntax` feature.
 ///
-/// Both, because both are about this bundle and a reader wants one list. They
-/// stay distinguishable by severity, which is the split that matters: nothing
-/// hygiene raises is ever an error, so merging them cannot change whether the
-/// bundle gates.
+/// All of them, because they are all about this bundle and a reader wants one
+/// list. They stay distinguishable by severity, which is the split that
+/// matters: nothing hygiene or syntax raises is ever an error, so merging them
+/// cannot change whether the bundle gates.
+///
+/// The third one is the only place in this crate that a feature changes what a
+/// run reports, and it is the honest shape of that change: `conform-okf`
+/// decides whether `OkfSyntax` exists at all, this function decides nothing,
+/// and the feature here is a forwarding address with no rules behind it. A
+/// build without it is not a build that checked the code and found it clean —
+/// `conform_okf::conform_okf_syntax::checkable_languages` is what a summary
+/// should say instead.
 fn bundle_report(path: &Path) -> ConformanceReport {
     match conform_okf::load(path) {
         Ok(bundle) => {
             let mut report = conform_okf::validate_bundle(&bundle).into_report();
             report.merge(conform_okf::lint_bundle(&bundle).into_report());
+            #[cfg(feature = "syntax")]
+            report.merge(conform_okf::OkfSyntax.validate(&bundle));
             report
         }
         Err(error) => error.into_report(),

@@ -26,6 +26,30 @@ authors.workspace      = true
 name = "conform"
 path = "src/main.rs"
 
+[features]
+default = []
+
+# Code syntax checking for OKF bundles, passed straight through to
+# `conform-okf`. Off by default, and nothing but a forwarding address: this
+# crate has no syntax rules of its own and adds no dependency of its own here.
+#
+# It exists because a feature nobody can reach from the binary is a feature
+# nobody has watched fire. `conform-okf/syntax` is the cheap tier — no parser at
+# all, just JSON, YAML and shell quoting — and the two below are what add one.
+#
+#     cargo run -p conform-cli --features syntax-sql -- --spec okf <bundle>
+#
+# Each tier names `syntax` as well as its own forwarding edge, and that is not
+# redundant: `syntax` is what this crate's own `cfg` in `engine::bundle_report`
+# reads. Without it, `--features syntax-sql` would compile `conform-okf` with
+# SQL support and then compile the call to it out of this binary — a build that
+# pays for `sqlparser` and reports nothing. That is not hypothetical; it is what
+# the first version of this manifest did, and it was caught by running the
+# binary rather than by any test.
+syntax          = ["conform-okf/syntax"]
+syntax-sql      = ["syntax", "conform-okf/syntax-sql"]
+syntax-grammars = ["syntax", "conform-okf/syntax-grammars"]
+
 [dependencies]
 # The shared vocabulary. Everything this binary renders is one of these
 # `Diagnostic`s; the renderers here add no findings of their own beyond the

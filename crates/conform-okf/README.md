@@ -57,7 +57,35 @@ so taking it means taking `rustpython-parser` — 61 crates, `LGPL-3.0-only`
 through the `malachite` tree, and unmaintained advisories whose own text says
 no safe upgrade exists. `cargo deny` refuses that on both counts. What is
 rebuilt here is the structural half, which is the half that is about OKF; the
-two code-parsing checks are absent by design.
+two code-parsing checks are absent **by default**.
+
+## Checking code, if you want it
+
+They are absent by default and no longer unavailable. The `syntax` feature adds
+`OkfSyntax`, a third validator over the same `Bundle`, backed by
+[`conform-okf-syntax`](../conform-okf-syntax) — a crate whose every code parser
+is itself optional, so you choose what you are willing to compile:
+
+| Feature | Adds | Costs |
+| --- | --- | --- |
+| `syntax` | `OkfSyntax`; JSON, YAML and shell quoting | one pure-Rust crate, no parser |
+| `syntax-sql` | SQL, via `sqlparser` | ~17 crates, two of which compile assembly |
+| `syntax-grammars` | Python, JavaScript, TypeScript, Rust, Bash | tree-sitter grammars, which compile C |
+
+```toml
+conform-okf = { version = "0.1", features = ["syntax-sql"] }
+```
+
+Two findings: `OKF310` when a `# Computation` block does not parse, which is a
+warning because that is the one block something is expected to *execute*, and
+`OKF007` when any other fenced block does not, which is information because the
+rest of a bundle's code is illustrative and documentation is full of fragments.
+
+With no feature named, this crate's dependency tree is `conform-core` and
+`okf-core` and stops. Turning `syntax` on does not change what `OkfConformance`
+or `OkfHygiene` report — the rules are a separate validator rather than a
+conditional branch inside an existing one, so the same bundle produces the same
+two reports in every build.
 
 ## Codes
 
