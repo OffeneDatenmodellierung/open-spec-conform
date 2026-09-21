@@ -65,8 +65,10 @@ wherever they carry knowledge rather than restating a field name.
 
 `data-modelling-sdk` is MIT. This workspace is `MIT OR Apache-2.0`. MIT
 material may be redistributed under a dual `MIT OR Apache-2.0` offer provided
-the MIT notice is preserved — which it is, here and in `LICENSE-MIT-upstream`
-at the repository root — because a recipient choosing the Apache-2.0 arm still
+the MIT notice is preserved — which it is, here and verbatim in
+`LICENSE-MIT-upstream`, kept both at the repository root and in this crate's
+own directory so that it travels in the published `.crate` rather than only in
+this repository — because a recipient choosing the Apache-2.0 arm still
 receives the MIT grant for this portion. There is no licence conflict to
 report.
 

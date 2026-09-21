@@ -291,3 +291,21 @@ real widgets produced. It asserts that a hostile document reaches no pane
 unescaped, that every catalogued specification is reachable and carries its
 link, that navigation needs no mouse, and — in both directions — that the set
 of diagnostics reachable in the console is exactly the set the run holds.
+
+## Licence
+
+`MIT OR Apache-2.0`, at your option, as the rest of this workspace.
+
+One file in the published tarball is not this workspace's own work. The
+embedded catalogue carries the vendored schemas with it, and one of them —
+`schemas/cads.schema.json` — belongs to
+[`data-modelling-sdk`](https://github.com/OffeneDatenmodellierung/data-modelling-sdk)
+rather than to a standards body. That repository is **MIT**, which `specs.toml`
+records along with the commit these bytes were last written at, and its notice
+names a different copyright holder and year than this repository's own
+`LICENSE-MIT` does. MIT's single condition is that its notice travels with the
+copies, so it is preserved verbatim at `LICENSE-MIT-upstream` — here in the
+crate directory, not only at the repository root, because a `.crate` archive
+contains nothing from above the package root and the tarball is what a consumer
+redistributes. `crates/conform-web/tests/every_crate_ships_its_licence.rs`
+enforces that.

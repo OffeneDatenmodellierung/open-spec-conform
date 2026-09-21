@@ -73,8 +73,10 @@ and be copied back, as the other two crates do.
 Ported from
 [`data-modelling-sdk`](https://github.com/OffeneDatenmodellierung/data-modelling-sdk)
 at commit **`22c9c218`**, from `crates/core/src/models/cads.rs`, under that
-repository's **MIT** licence — preserved at `LICENSE-MIT-upstream` in the
-repository root. `data-modelling-sdk` is MIT and this workspace is
+repository's **MIT** licence — preserved verbatim at `LICENSE-MIT-upstream`,
+both at the repository root and in this crate's own directory, so that it
+travels in the published `.crate` rather than only in this repository.
+`data-modelling-sdk` is MIT and this workspace is
 `MIT OR Apache-2.0`; MIT material redistributes under that dual offer with the
 notice preserved, so there is no licence conflict to report.
 
