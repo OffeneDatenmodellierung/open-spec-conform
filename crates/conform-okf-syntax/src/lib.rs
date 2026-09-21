@@ -714,6 +714,66 @@ fn check_shell_quoting(source: &str) -> Result<(), SyntaxError> {
 mod tests {
     use super::*;
 
+    /// Every entry in the manifest's `[dependencies]`, as
+    /// `(name, is it optional)`, in the order the manifest lists them.
+    ///
+    /// # Why this parses two spellings of the same table
+    ///
+    /// Because the manifest that ships is not the manifest that is written.
+    /// `cargo package` rewrites `[dependencies]` into one `[dependencies.NAME]`
+    /// table per entry, so a reader that only understands the first spelling
+    /// finds **nothing** inside the crate's own tarball — which is where a
+    /// consumer who unpacked it would run these tests, and where a guard that
+    /// silently matched an empty list would be worse than no guard at all.
+    ///
+    /// That is not hypothetical: it is what this crate did when it was
+    /// published as `rto-okf-syntax 0.1.1`, and it was found by running the
+    /// tests out of the packaged tarball rather than out of the workspace.
+    ///
+    /// `[dev-dependencies]` and `[dev-dependencies.NAME]` are deliberately not
+    /// matched: `syn` is a dev-dependency and is not part of what a consumer
+    /// compiles.
+    fn declared_dependencies(manifest: &str) -> Vec<(String, bool)> {
+        let mut found: Vec<(String, bool)> = Vec::new();
+        // `[dependencies]` as a table of one-line entries…
+        let mut in_table = false;
+        // …or `[dependencies.NAME]`, whose keys arrive on the lines after it.
+        let mut section: Option<usize> = None;
+
+        for line in manifest.lines() {
+            let line = line.trim();
+
+            if line.starts_with('[') {
+                in_table = line == "[dependencies]";
+                section = line
+                    .strip_prefix("[dependencies.")
+                    .and_then(|rest| rest.strip_suffix(']'))
+                    .map(|name| {
+                        found.push((name.to_owned(), false));
+                        found.len() - 1
+                    });
+                continue;
+            }
+
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            if in_table {
+                if let Some(name) = line.split(['=', ' ']).next() {
+                    found.push((name.to_owned(), line.contains("optional = true")));
+                }
+            } else if let Some(index) = section
+                && line.starts_with("optional")
+                && line.contains("true")
+            {
+                found[index].1 = true;
+            }
+        }
+
+        found
+    }
+
     /// The manifest is the contract. This crate is worth having only while it
     /// stays free of the tree that made `okf-validator` unusable, so the
     /// dependency list is asserted rather than trusted.
@@ -724,21 +784,10 @@ mod tests {
     /// it brings a language front-end, ask whether a grammar already covers it.
     #[test]
     fn dependencies_are_frozen() {
-        let manifest = include_str!("../Cargo.toml");
-        let deps: Vec<String> = manifest
-            .lines()
-            .skip_while(|l| l.trim() != "[dependencies]")
-            .skip(1)
-            .take_while(|l| !l.trim_start().starts_with('['))
-            .filter_map(|l| {
-                let line = l.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    return None;
-                }
-                line.split(['=', ' ']).next().map(str::to_owned)
-            })
+        let mut sorted: Vec<String> = declared_dependencies(include_str!("../Cargo.toml"))
+            .into_iter()
+            .map(|(name, _)| name)
             .collect();
-        let mut sorted = deps.clone();
         sorted.sort();
         assert_eq!(
             sorted,
@@ -761,23 +810,69 @@ mod tests {
     /// exist. Anything that parses a programming language is `optional = true`.
     #[test]
     fn every_language_parser_is_optional() {
-        let manifest = include_str!("../Cargo.toml");
-        let non_optional: Vec<&str> = manifest
-            .lines()
-            .skip_while(|l| l.trim() != "[dependencies]")
-            .skip(1)
-            .take_while(|l| !l.trim_start().starts_with('['))
-            .filter(|l| {
-                let t = l.trim();
-                !t.is_empty() && !t.starts_with('#') && !t.contains("optional = true")
-            })
-            .filter_map(|l| l.trim().split([' ', '=']).next())
+        let non_optional: Vec<String> = declared_dependencies(include_str!("../Cargo.toml"))
+            .into_iter()
+            .filter_map(|(name, optional)| (!optional).then_some(name))
             .collect();
         assert_eq!(
             non_optional,
             vec!["okf-core", "serde_json"],
             "only the two pure-Rust, non-code-parsing dependencies may be \
              mandatory; everything that parses a language belongs behind a feature"
+        );
+    }
+
+    /// The reader above understands the spelling `cargo package` produces, and
+    /// not merely the one this repository writes.
+    ///
+    /// The two assertions above run against `include_str!("../Cargo.toml")`,
+    /// which is this workspace's manifest in a workspace build and the
+    /// *rewritten* one inside a tarball. Only one of those is exercised by any
+    /// given run, so the other spelling is pinned here with a literal — which
+    /// is also the only way to state the rewritten form without publishing the
+    /// crate to look at it.
+    #[test]
+    fn the_manifest_reader_understands_a_packaged_manifest() {
+        let packaged = "\
+[package]
+name = \"conform-okf-syntax\"
+
+[dependencies.okf-core]
+version = \"0.2.7\"
+
+[dependencies.sqlparser]
+version = \"0.62\"
+optional = true
+
+[dev-dependencies.syn]
+version = \"3\"
+";
+        assert_eq!(
+            declared_dependencies(packaged),
+            vec![
+                ("okf-core".to_owned(), false),
+                ("sqlparser".to_owned(), true),
+            ],
+            "a `[dependencies.NAME]` table must be read, its `optional` key must be seen, and \
+             `[dev-dependencies.NAME]` must not be mistaken for one"
+        );
+
+        // And the written spelling still reads, so the fix did not trade one
+        // blind spot for the other.
+        let written = "\
+[dependencies]
+okf-core = \"0.2.7\"
+sqlparser = { version = \"0.62\", optional = true }
+
+[dev-dependencies]
+syn = \"3\"
+";
+        assert_eq!(
+            declared_dependencies(written),
+            vec![
+                ("okf-core".to_owned(), false),
+                ("sqlparser".to_owned(), true),
+            ],
         );
     }
 

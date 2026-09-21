@@ -116,6 +116,7 @@ Thirteen workspace members; twelve go to crates.io.
 | `conform-odcs` | yes | ODCS conformance adapter. |
 | `conform-odps` | yes | ODPS conformance adapter. |
 | `conform-okf` | yes | OKF conformance adapter. |
+| `conform-okf-syntax` | yes | Code syntax for OKF fenced blocks. Optional from `conform-okf`, and useful on its own to anyone who cannot take `okf-validator`'s tree — it was written to be given away and this is the second time it has been. |
 | `conform-lexicon` | yes | ODCL conformance adapter. |
 | `conform-model-odcs` | yes | Typed ODCS model. No internal dependencies. |
 | `conform-model-odps` | yes | Typed ODPS model. No internal dependencies. |
@@ -135,14 +136,16 @@ build resolves path dependencies from the registry, not from this workspace.
 `tools/publish-order.py` derives a safe sequence from `cargo metadata` and
 drops anything carrying `publish = false`. `release.yml` calls it. **Do not
 transcribe its output into a workflow or a script** — this workspace went from
-nine crates to thirteen between two commits, and a list written down would have
-gone on publishing the first nine while looking complete.
+nine crates to thirteen between two commits, and to fourteen in the one after
+that, and a list written down would have gone on publishing the first nine
+while looking complete. `conform-okf-syntax` arriving is the most recent
+demonstration: it has to precede `conform-okf`, and nobody had to be told.
 
 ```console
 $ ./tools/publish-order.py
 conform-core conform-model-cads conform-model-dbmv conform-model-odcs
-conform-model-odps conform-registry conform-lexicon conform-odcs conform-odps
-conform-okf conform-cli conform-ffi
+conform-model-odps conform-okf-syntax conform-registry conform-lexicon
+conform-odcs conform-odps conform-okf conform-cli conform-ffi
 ```
 
 That is what it prints today, shown so a reader knows the shape — not an
@@ -154,9 +157,11 @@ and could go first, last, or any time.
 
 With nothing yet on crates.io:
 
-- **Five crates package cleanly today**, verification build included:
-  `conform-core` and the four `conform-model-*` crates. All five depend on no
-  other workspace member, which is exactly why.
+- **Six crates package cleanly today**, verification build included:
+  `conform-core`, the four `conform-model-*` crates and `conform-okf-syntax`.
+  All six depend on no other workspace member, which is exactly why —
+  `conform-okf-syntax` takes `okf-core` and `serde_json` from crates.io and
+  nothing from here, which is also what makes it giveable away.
 - The other eight **fail**, every one with `no matching package named '…'
   found / location searched: crates.io index` — `conform-core` for seven of
   them, `conform-cli` for `conform-web`.
@@ -169,11 +174,11 @@ same wall.
 
 What *is* checkable ahead of time, and was:
 
-- `cargo package --list` works for all thirteen and reports exactly what each
+- `cargo package --list` works for all fourteen and reports exactly what each
   tarball would hold.
 - Copying precisely those files into a tree with **no repository root** — no
   `specs.toml`, no `schemas/` — and building every target proves no crate
-  reaches outside its own directory at build time. All thirteen build; so does
+  reaches outside its own directory at build time. All fourteen build; so does
   `conform-ffi --features wasm`. This is how the `conform-ffi` `include_str!`
   defect was found and how its fix was confirmed, and it is worth re-running
   whenever a crate starts embedding something.
@@ -188,13 +193,28 @@ Running `cargo test` inside an unpacked tarball gives, today:
 | `conform-model-odcs` / `-odps` / `-cads` / `-dbmv` | all pass (28 / 10 / 12 / 14) |
 | `conform-registry` | 15 pass, 11 fail |
 | `conform-odcs` / `conform-odps` | 8 pass, 14 fail each |
-| `conform-okf` | 25 pass, 3 fail |
+| `conform-okf-syntax` | 24 pass, 0 fail |
+| `conform-okf` | 27 pass, 3 fail |
 | `conform-lexicon` | 20 pass, 27 fail |
 | `conform-ffi` | 27 pass, 15 fail |
 | `conform-cli` | 21 pass, 28 fail |
 
 Every failure is the same one: `tests/support/mod.rs` climbs two directories to
 find the workspace root's `specs.toml`, and a tarball has no workspace root.
+
+`conform-okf-syntax` is the exception and is worth a sentence, because it was
+*not* an exception when it arrived. Its manifest guard —
+`dependencies_are_frozen`, the test that is the whole reason the crate is worth
+having — read `[dependencies]` as a table of one-line entries, which is how this
+repository writes it and **not** how `cargo package` ships it: the rewritten
+manifest spells each entry `[dependencies.NAME]`, so inside the tarball the
+guard parsed nothing. It failed loudly rather than silently, because the list it
+compares against is not empty, but a consumer who unpacked the crate and ran its
+tests would have seen the supply-chain guard fail for a reason that had nothing
+to do with the supply chain. The reader now understands both spellings and
+`the_manifest_reader_understands_a_packaged_manifest` pins the one this
+workspace never produces. The crate it was ported from,
+`rto-okf-syntax 0.1.1`, still has the original.
 
 **This does not block publishing.** `cargo publish` *builds* test targets during
 verification and never *runs* them, and the builds all succeed. What it means is
