@@ -199,7 +199,12 @@ fn unknown_spec(spec_id: &str) -> BuildError {
 /// The diagnostics are kept verbatim, codes and all, rather than paraphrased:
 /// a caller reading `REG002` on the other side of a C ABI can look it up, and
 /// "the schema was rejected" cannot be looked up at all.
-fn render(report: &ConformanceReport) -> String {
+///
+/// `pub(crate)` rather than private so that [`crate::embedded`] flattens a
+/// refusal the same way this module does. Two spellings of "here is what the
+/// registry said" is exactly the drift the rest of this repository spends its
+/// tests preventing.
+pub(crate) fn render(report: &ConformanceReport) -> String {
     if report.is_empty() {
         return "the validator could not be built, and said nothing about why".to_owned();
     }

@@ -55,6 +55,29 @@
 //! browser. See [`escape`] for what that means and why the two are not the
 //! same function.
 //!
+//! # Validating in the browser
+//!
+//! A fourth job, when the build produced the thing that does it:
+//! `conform-ffi`'s `wasm` feature, compiled to WebAssembly and loaded from
+//! beside the page. The document never leaves the tab.
+//!
+//! [`Demo`] is the typed value that decides whether the page says so, and it
+//! is a **measurement**: [`Demo::look_for`] stats the artefacts and the
+//! variant follows. A build that produced no module renders a page that says
+//! which files it went looking for, rather than a validation box that throws
+//! on first use — which would be the worst outcome available in this section,
+//! since a reader who pastes a contract into a dead box has been told
+//! something false about their document by a project whose whole subject is
+//! not doing that.
+//!
+//! Two consequences worth stating here rather than only in [`render`]. The
+//! page is no longer self-contained when the demo is wired — an ES module is
+//! fetched, which is also the one thing that cannot work from a `file://`
+//! URL, so the panel shows the browser's error instead of failing quietly.
+//! And the escaping rule above becomes load-bearing at run time: a finding
+//! quotes the reader's own pasted document, and every one is written with
+//! `textContent`.
+//!
 //! # Example
 //!
 //! ```no_run
@@ -70,7 +93,7 @@ pub mod render;
 pub mod site;
 
 pub use manifests::{CrateEntry, ManifestError};
-pub use site::{Demo, GatherError, Site, SpecCard};
+pub use site::{Demo, GatherError, Module, Site, SpecCard};
 
 use std::fs;
 use std::io;
@@ -82,6 +105,14 @@ use std::path::Path;
 /// that serves a directory, and openable as-is by a browser given the
 /// directory.
 pub const PAGE_FILE: &str = "index.html";
+
+/// Where the page expects the WebAssembly module, relative to itself.
+///
+/// A subdirectory rather than the output root, so that the one part of this
+/// site which is *not* a single self-contained file is visibly separate from
+/// the part that is. `tools/wasm/build.sh` writes here by default and
+/// `website/build.sh` runs it before this generator.
+pub const WASM_DIR: &str = "wasm";
 
 /// Generate the site from a checkout into an output directory.
 ///
@@ -100,7 +131,29 @@ pub fn build(
     root: impl AsRef<Path>,
     out: impl AsRef<Path>,
 ) -> Result<std::path::PathBuf, BuildError> {
-    let site = Site::gather(root).map_err(BuildError::Gather)?;
+    let out = out.as_ref();
+    build_with_module(root, out, out.join(WASM_DIR))
+}
+
+/// Generate the site, looking for the WebAssembly module somewhere specific.
+///
+/// The seam [`build`] is a default for, and the one `--wasm` reaches. The
+/// module directory is a separate argument because it is a separate decision:
+/// a build that produced no module still produces a page, and that page says
+/// which files it went looking for and what it found instead of them.
+///
+/// # Errors
+///
+/// As [`build`]. A missing module is not an error — it is a
+/// [`Demo::NotWired`] on the page, which is the whole point of that variant.
+pub fn build_with_module(
+    root: impl AsRef<Path>,
+    out: impl AsRef<Path>,
+    module_dir: impl AsRef<Path>,
+) -> Result<std::path::PathBuf, BuildError> {
+    let site = Site::gather(root)
+        .map_err(BuildError::Gather)?
+        .with_demo(Demo::look_for(module_dir.as_ref(), WASM_DIR));
     let html = render::page(&site);
 
     let out = out.as_ref();

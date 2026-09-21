@@ -46,13 +46,32 @@
 //! rather than returning. See [`abi`] for what that costs and what it does
 //! not.
 //!
+//! # The optional `wasm` binding, and the guarantee it does not make
+//!
+//! Off by default. `--features wasm` adds [`wasm`] — a `wasm-bindgen` surface
+//! for a host with no filesystem — and [`embedded`], which freezes the
+//! registry and the vendored schemas into the artefact so the digest gate
+//! still runs where there is nothing to read them from. Nothing above changes:
+//! the C ABI, its status codes and its `catch_unwind` are the same code with
+//! the feature on or off, and `tests/the_wasm_feature_is_additive.rs` measures
+//! that rather than asserting it.
+//!
+//! What the binding deliberately does **not** export is a self-test that
+//! claims to catch a panic. The no-unwind guarantee above is a **native**
+//! guarantee; on `wasm32-unknown-unknown` a panic is fatal to the instance and
+//! [`wasm::PANIC_CONTRACT`] says so in the artefact's own words. See that
+//! module before calling it from anywhere.
+//!
 //! # Where the `unsafe` is
 //!
-//! In [`abi`], and nowhere else. The workspace forbids `unsafe_code`; this
-//! crate downgrades that to `deny` in its own manifest and lifts it, in
-//! writing, on exactly one module. [`engine`], [`report`], [`error`] and
-//! [`status`] are ordinary safe Rust and are still held to `deny`, which is
-//! what keeps the part of this crate that can be wrong in the dangerous way
+//! In [`abi`], and nowhere else that is hand-written. The workspace forbids
+//! `unsafe_code`; this crate downgrades that to `deny` in its own manifest and
+//! lifts it, in writing, on exactly two modules. [`abi`] is the one that
+//! contains `unsafe` somebody typed; [`wasm`], behind the optional feature,
+//! lifts it only because `#[wasm_bindgen]` expands to generated shims and has
+//! no raw pointer of its own. [`engine`], [`embedded`], [`report`], [`error`]
+//! and [`status`] are ordinary safe Rust and are still held to `deny`, which
+//! is what keeps the part of this crate that can be wrong in the dangerous way
 //! down to one readable file.
 //!
 //! # The header
@@ -110,10 +129,14 @@
 //! ```
 
 pub mod abi;
+#[cfg(feature = "wasm")]
+pub mod embedded;
 pub mod engine;
 pub mod error;
 pub mod report;
 pub mod status;
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 pub use abi::ConformValidator;
 pub use report::{Envelope, SCHEMA_VERSION};

@@ -33,7 +33,7 @@
 //! exist, and what is inside a tag.
 
 use conform_registry::Registry;
-use conform_web::{Site, render};
+use conform_web::{Demo, Module, Site, render};
 
 /// A registry whose every field is trying to become markup.
 ///
@@ -90,6 +90,34 @@ fn hostile_page() -> String {
     render::page(&site)
 }
 
+/// The same page, with the in-browser validator wired up.
+///
+/// A second demo state means a second set of elements — a `select`, a
+/// `textarea`, a `button`, a second `script` — and a scan that only ever saw
+/// the other state would be a scan with a hole in it exactly where the newest
+/// markup is. The registry is the same hostile one, because what is being
+/// tested is still whether a registry value can become markup.
+fn hostile_wired_page() -> String {
+    let registry = Registry::load_str(&hostile(), "<hostile>").expect("the fixture is a registry");
+    let site = Site::from_parts(&registry, Vec::new(), "hostile.toml".to_owned()).with_demo(
+        Demo::Wired(Module {
+            script_href: "./wasm/conform_ffi.js".to_owned(),
+            script_bytes: 19_322,
+            wasm_href: "./wasm/conform_ffi_bg.wasm".to_owned(),
+            wasm_bytes: 3_112_486,
+        }),
+    );
+    render::page(&site)
+}
+
+/// Both demo states, named, so a failure says which page it was looking at.
+fn hostile_pages() -> [(&'static str, String); 2] {
+    [
+        ("demo not wired", hostile_page()),
+        ("demo wired", hostile_wired_page()),
+    ]
+}
+
 /// Every tag in a page, as raw `<…>` slices.
 ///
 /// Sound because escaping guarantees it is: a registry value can no longer
@@ -142,10 +170,21 @@ fn element_names(page: &str) -> Vec<String> {
 /// count for that reason.
 const WRITTEN_BY_THE_RENDERER: &[&str] = &[
     "html", "head", "meta", "title", "style", "body", "header", "h1", "h2", "h3", "h4", "p", "dl",
-    "dt", "dd", "div", "nav", "ul", "li", "a", "main", "section", "table", "thead", "tbody", "tr",
-    "th", "td", "code", "span", "br", "article", "details", "summary", "em", "strong", "pre",
-    "footer", "input", "label", "script", "colgroup", "col",
+    "dt", "dd", "div", "nav", "ul", "ol", "li", "a", "main", "section", "table", "thead", "tbody",
+    "tr", "th", "td", "code", "span", "br", "article", "details", "summary", "em", "strong", "pre",
+    "footer", "input", "label", "script", "colgroup", "col", "select", "button", "textarea",
+    "noscript",
 ];
+
+/// `option` is deliberately absent from the list above.
+///
+/// The `select` the wired demo writes is **empty**: its options are the spec
+/// ids the WebAssembly module reports it carries a verified schema for, added
+/// by the browser at run time. A page that wrote them would be a page that can
+/// offer a standard the artefact beside it cannot validate, which is the exact
+/// class of claim `Demo` exists to prevent — so an `option` in the generated
+/// bytes is a regression, and the scan above is what would catch it.
+const DELIBERATELY_NOT_WRITTEN: &[&str] = &["option"];
 
 #[test]
 fn the_fixture_really_is_hostile() {
@@ -174,29 +213,42 @@ fn the_fixture_really_is_hostile() {
 
 #[test]
 fn no_element_the_renderer_never_writes_appears_on_the_page() {
-    let page = hostile_page();
-    let found: Vec<String> = element_names(&page)
-        .into_iter()
-        .filter(|name| !WRITTEN_BY_THE_RENDERER.contains(&name.as_str()))
-        .collect();
+    for (which, page) in hostile_pages() {
+        let found: Vec<String> = element_names(&page)
+            .into_iter()
+            .filter(|name| !WRITTEN_BY_THE_RENDERER.contains(&name.as_str()))
+            .collect();
 
-    assert!(
-        found.is_empty(),
-        "elements the renderer never writes appear on the page, so the registry created \
-         them: {found:?}",
-    );
+        assert!(
+            found.is_empty(),
+            "{which}: elements the renderer never writes appear on the page, so the registry \
+             created them: {found:?}",
+        );
 
-    // `script` is on the allow-list because the renderer writes one. It must
-    // write exactly one, or a second could be the registry's.
-    let scripts = element_names(&page)
-        .iter()
-        .filter(|n| *n == "script")
-        .count();
-    assert_eq!(
-        scripts, 2,
-        "the page should hold exactly one script element — an open tag and a close tag — and \
-         holds {scripts} tags",
-    );
+        for never in DELIBERATELY_NOT_WRITTEN {
+            assert!(
+                !element_names(&page).iter().any(|name| name == never),
+                "{which}: `{never}` is on the page, and the renderer must not write one",
+            );
+        }
+
+        // `script` is on the allow-list because the renderer writes its own.
+        // It must write exactly the ones it means to, or a further one could
+        // be the registry's: one when the demo is not wired, two when it is —
+        // the page's own behaviour, and the module loader.
+        let tags = element_names(&page)
+            .iter()
+            .filter(|n| *n == "script")
+            .count();
+        let expected = if which == "demo wired" { 4 } else { 2 };
+        assert_eq!(
+            tags,
+            expected,
+            "{which}: the page should hold {} script element(s) — an open tag and a close tag \
+             each — and holds {tags} tags",
+            expected / 2,
+        );
+    }
 }
 
 #[test]
@@ -251,27 +303,29 @@ fn attribute_name_regions(tag: &str) -> Vec<&str> {
 
 #[test]
 fn no_tag_on_the_page_carries_an_event_handler() {
-    let page = hostile_page();
-    let mut inspected = 0_usize;
+    for (which, page) in hostile_pages() {
+        let mut inspected = 0_usize;
 
-    for tag in tags(&page) {
-        for region in attribute_name_regions(tag) {
-            let lower = region.to_ascii_lowercase();
-            for handler in ["onmouseover", "onerror", "onload", "onclick", "onfocus"] {
-                assert!(
-                    !lower.contains(handler),
-                    "a tag declares the attribute {handler:?}, so an attribute value was \
-                     broken out of: {tag:?}",
-                );
+        for tag in tags(&page) {
+            for region in attribute_name_regions(tag) {
+                let lower = region.to_ascii_lowercase();
+                for handler in ["onmouseover", "onerror", "onload", "onclick", "onfocus"] {
+                    assert!(
+                        !lower.contains(handler),
+                        "{which}: a tag declares the attribute {handler:?}, so an attribute \
+                         value was broken out of: {tag:?}",
+                    );
+                }
+                inspected += 1;
             }
-            inspected += 1;
         }
-    }
 
-    assert!(
-        inspected > 100,
-        "only {inspected} attribute regions were inspected; the scan is not reading the page",
-    );
+        assert!(
+            inspected > 100,
+            "{which}: only {inspected} attribute regions were inspected; the scan is not \
+             reading the page",
+        );
+    }
 }
 
 #[test]
@@ -297,19 +351,21 @@ fn the_attribute_scan_can_see_a_handler_when_there_is_one() {
 
 #[test]
 fn no_tag_on_the_page_carries_a_javascript_url() {
-    for tag in tags(&hostile_page()) {
-        for region in attribute_name_regions(tag) {
+    for (which, page) in hostile_pages() {
+        for tag in tags(&page) {
+            for region in attribute_name_regions(tag) {
+                assert!(
+                    !region.to_ascii_lowercase().contains("javascript:"),
+                    "{which}: a javascript: URL escaped its attribute value: {tag:?}",
+                );
+            }
+            // An href is the one attribute where the *value* matters too, and
+            // the scheme allow-list is what guards it.
             assert!(
-                !region.to_ascii_lowercase().contains("javascript:"),
-                "a javascript: URL escaped its attribute value: {tag:?}",
+                !tag.to_ascii_lowercase().contains("href=\"javascript:"),
+                "{which}: a javascript: URL was emitted as an href: {tag:?}",
             );
         }
-        // An href is the one attribute where the *value* matters too, and the
-        // scheme allow-list is what guards it.
-        assert!(
-            !tag.to_ascii_lowercase().contains("href=\"javascript:"),
-            "a javascript: URL was emitted as an href: {tag:?}",
-        );
     }
 }
 
