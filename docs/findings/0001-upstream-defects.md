@@ -121,3 +121,163 @@ diff remains outstanding.
 
 **Suggested fix upstream:** rename to `odps-json-schema-v1.0.0.json` and adopt
 a provenance record. This repository's `specs.toml` is offered as the format.
+
+---
+
+## F-005 — The ODCL schema's entire server type-dispatch is unreachable
+
+**Repository:** upstream `datacontract/datacontract-specification`, vendored in
+this estate as `schemas/odcl-json-schema-1.2.1.json`
+**Severity:** high — it is a false green, and it is 19 branches wide
+
+`servers`' value schema is written like this:
+
+```json
+"additionalProperties": {
+  "$ref": "#/$defs/BaseServer",
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "postgres" } }, "required": ["type"] },
+      "then": { "$ref": "#/$defs/PostgresServer" } },
+    …18 more branches…
+  ]
+}
+```
+
+and the document declares `"$schema": "http://json-schema.org/draft-07/schema#"`.
+
+Under draft-07, a `$ref` **alongside other keywords means every sibling keyword
+is ignored** — the rule that changed in 2019-09, where `$ref` became an
+ordinary applicator. So `BaseServer` applies, the `allOf` does not, and every
+per-technology server sub-schema in the document is dead code:
+`PostgresServer`, `S3Server`, `KafkaServer`, `SnowflakeServer` and fifteen
+more.
+
+`PostgresServer` requires `host`, `port`, `database` and `schema`, and types
+all four. This document conforms completely:
+
+```yaml
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders
+info:
+  title: Orders
+  version: 1.0.0
+servers:
+  production:
+    type: postgres          # required fields absent entirely
+  staging:
+    type: postgres
+    host: 42                # and here, every one of them the wrong type
+    port: "not a port"
+    database: []
+    schema: {}
+```
+
+`validate_odcl_internal` returns `Ok(())` for it. So does `conform-lexicon`,
+deliberately — the verdict is the published schema's verdict.
+
+**Isolated empirically**, not inferred from the specification text. A probe
+schema of the same shape, varying one thing at a time
+(`crates/conform-lexicon/tests/the_server_dispatch_is_dead.rs`):
+
+| draft | `$ref` sibling present | `allOf` fires? |
+|---|---|---|
+| draft-07 | yes | **no** |
+| draft-07 | no | yes |
+| 2019-09 | yes | yes |
+
+Two controls, one variable. The same test asserts the vendored schema still
+declares draft-07, still carries the `$ref`, and still has 19 branches, so the
+finding cannot quietly outlive its cause.
+
+**Suggested fix upstream:** move the `$ref` into the `allOf` as its own
+member —
+
+```json
+"allOf": [ { "$ref": "#/$defs/BaseServer" }, …the 19 branches… ]
+```
+
+— which is behaviour-preserving for `BaseServer` and revives the dispatch under
+every draft. Declaring a later draft would also work, but is a larger change
+with other consequences.
+
+**What this repository does about it:** reports it and does not route around
+it. Reimplementing nineteen server sub-schemas locally would make
+`conform-lexicon` the only tool in the estate that rejects these documents, and
+a validator nobody else agrees with is a validator nobody uses. Instead every
+affected server gets an `ODCL304` note at `Severity::Info` naming the check
+that did not happen — "checked against `BaseServer` only" — so the gap is
+visible without the verdict moving.
+
+---
+
+### Orchestrator corroboration, and a one-line fix the finding under-called
+
+Verified independently against `data-modelling-sdk/schemas/odcl-json-schema-1.2.1.json`:
+`$schema` is `http://json-schema.org/draft-07/schema#`, and `properties.servers.additionalProperties`
+has exactly the keys `["$ref", "allOf"]`, where `allOf` holds **19 branches, all of them `if`/`then`**.
+Under draft-07 `$ref` suppresses every sibling keyword, so all 19 are dead. The finding is exact.
+
+There is a further fact that makes the cause plainer and the repair cheaper. **The schema also uses
+`$defs`, which is not a draft-07 keyword at all** — it was introduced in 2019-09, where draft-07
+spells the same thing `definitions`. The file carries 22 `$defs` entries and 25 `#/$defs/`
+references, and zero `#/definitions/` references. So the document is written in 2019-09 vocabulary
+throughout while declaring draft-07.
+
+The estate's own files show this is an outlier rather than a house style:
+
+| Vendored schema | Declares | Uses |
+|---|---|---|
+| `odcs-json-schema-v3.1.0.json` | 2019-09 | `$defs` |
+| `odps-json-schema-latest.json` | 2019-09 | `$defs` |
+| `common-types-schema.json`, `dbmv`, `domain`, `system`, `workspace` | draft-07 | `definitions` |
+| **`odcl-json-schema-1.2.1.json`** | **draft-07** | **`$defs`** |
+| `knowledge-schema.json` | draft-07 | `$defs` |
+
+Every other file is internally consistent. ODCL's `$schema` declaration is simply stale, and the
+repair is one line — declare 2019-09, as its ODCS and ODPS siblings already do. That single change
+makes `$defs` a recognised keyword *and* un-deadens all 19 branches, because 2019-09 permits `$ref`
+to have siblings. This is corroborated by the adapter's own control experiment, which observed the
+`allOf` firing under 2019-09 with the `$ref` left in place.
+
+`knowledge-schema.json` has the same draft-07-plus-`$defs` inconsistency and should be checked for
+the same class of silently-dead subschema.
+
+Deciding the fix is upstream's call, not ours: bumping `$schema` will start rejecting documents that
+are accepted today, which is correct but is not a patch release. Reporting it as `ODCL304` info
+rather than enforcing it unilaterally remains the right call for 0.1.0.
+
+## F-006 — `validate_odcs_internal`'s sniffing is now removable
+
+**Repository:** `data-modelling-sdk`
+**Severity:** low — this is a *resolution* note for F-001, not a new defect
+
+F-001 records that `validate_odcs_internal` sniffs its input and hands
+ODCL-shaped documents to `validate_odcl_internal`, returning that verdict as
+though ODCS had been checked. The note there was that the fix requires a return
+type able to distinguish "not applicable" from "valid".
+
+That type now exists in this estate, and so does the validator it needs.
+`conform-core` supplies `Severity`, a stable `DiagnosticCode` and a
+`ConformanceReport` that holds many findings; `conform-lexicon` is a real ODCL
+validator with the same provenance guarantees and the same diagnostic
+vocabulary as `conform-odcs`. Dispatch no longer has to be hidden inside one of
+the two validators to be available to a caller, because a caller can now run
+either and get a report that says which standard answered.
+
+So the sniffing can go, and the shape that replaces it is:
+
+- `validate_odcs_internal` validates ODCS. A document that is not an ODCS
+  contract fails it, with findings saying so — which is what
+  `conform-lexicon`'s own corpus already demonstrates in the mirror direction:
+  `faulty-odcs-document.yaml` is a perfectly good ODCS contract, and both
+  `validate_odcl_internal` and `conform-lexicon` reject it as ODCL, because
+  neither sniffs;
+- a caller that genuinely has a mixed directory dispatches explicitly, on the
+  document's own declared shape, and the dispatch is visible at the call site
+  rather than buried in a function whose name says it validates one standard.
+  `conform-cli`'s `discover` module already does exactly this.
+
+This is a statement about what is now *possible*, not a claim that anybody has
+done it. The change is upstream's to make, and it is a breaking one for any
+caller currently relying on the sniff — which is itself worth knowing, since
+that reliance is invisible in the signature today.

@@ -1,0 +1,24 @@
+# One document, many faults. The whole argument for this crate in a single
+# file: the pre-existing validator reports the first of these and stops, so
+# fixing this document costs one round trip per fault.
+#
+#   - `dataContractSpecification: 2.0.0` is not in the enum;
+#   - `id` is a number where a string is required;
+#   - `info.version` is required and absent;
+#   - `info.contact.email` is not an email address;
+#   - the model name has a space in it;
+#   - `type: str` is not a logical type;
+#   - `models` would need at least one member if it were empty.
+dataContractSpecification: 2.0.0
+id: 42
+info:
+  title: Orders
+  status: active
+  contact:
+    email: not-an-email-address
+models:
+  order lines:
+    type: table
+    fields:
+      sku:
+        type: str

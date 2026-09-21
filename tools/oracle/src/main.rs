@@ -2,7 +2,8 @@
 //! fixture corpora.
 //!
 //! This calls the real functions — `data_modelling_core::validation::schema::
-//! validate_odcs_internal` and `validate_odps_internal` — over every fixture,
+//! validate_odcs_internal`, `validate_odcl_internal` and
+//! `validate_odps_internal` — over every fixture,
 //! and writes what they returned to a JSON file each adapter crate's
 //! differential test reads back.
 //!
@@ -60,6 +61,18 @@ const CORPORA: &[Corpus] = &[
         sdk_schema: "schemas/odps-json-schema-latest.json",
         vendored_schema: "schemas/odps-json-schema-v1.0.0.json",
         validate: data_modelling_core::validation::schema::validate_odps_internal,
+    },
+    Corpus {
+        crate_dir: "crates/conform-lexicon",
+        output: "crates/conform-lexicon/tests/oracle/odcl-verdicts.json",
+        function: "data_modelling_core::validation::schema::validate_odcl_internal",
+        // Unlike its ODCS sibling, this function does not sniff: it compiles
+        // the ODCL schema and validates against it, and that is all it does.
+        // Which is why its verdict is a clean oracle for `conform-lexicon` —
+        // there is no dispatch to see through.
+        sdk_schema: "schemas/odcl-json-schema-1.2.1.json",
+        vendored_schema: "schemas/odcl-json-schema-1.2.1.json",
+        validate: data_modelling_core::validation::schema::validate_odcl_internal,
     },
 ];
 

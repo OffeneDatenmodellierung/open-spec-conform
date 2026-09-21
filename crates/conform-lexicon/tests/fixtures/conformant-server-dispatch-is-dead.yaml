@@ -1,0 +1,46 @@
+# This fixture was written expecting to be rejected. It is not, and WHY it is
+# not is a defect in the vendored schema.
+#
+# `servers`' value schema is `{ "$ref": "#/$defs/BaseServer", "allOf": [ …19
+# if/then branches… ] }`. The schema declares draft-07, where a `$ref`
+# alongside other keywords means **every sibling keyword is ignored**. So the
+# entire per-technology dispatch — PostgresServer, S3Server, KafkaServer and
+# sixteen more — is unreachable, and only `BaseServer` is ever applied.
+#
+# PostgresServer requires `host`, `port`, `database` and `schema` and types all
+# four. This server declares none of them and then gets all four wrong anyway,
+# and the published schema accepts it. `validate_odcl_internal` returns Ok(()).
+# So does this crate: the verdict is the schema's verdict, deliberately.
+#
+# What this crate adds is that it SAYS SO, under ODCL304, as information —
+# "this server was checked against BaseServer only, not against the postgres
+# sub-schema its `type` names". Never checked and checked-and-fine must not
+# look identical.
+#
+# Isolated proof of the mechanism, and the finding it became, are in
+# docs/findings/0001-upstream-defects.md, F-005.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-server
+info:
+  title: Orders
+  version: 1.0.0
+  status: active
+  description: A postgres server that satisfies nothing postgres requires.
+  owner: checkout-platform
+servers:
+  production:
+    type: postgres
+  staging:
+    type: postgres
+    host: 42
+    port: "not a port"
+    database: []
+    schema: {}
+  archive:
+    type: s3
+models:
+  orders:
+    type: table
+    fields:
+      order_id:
+        type: string

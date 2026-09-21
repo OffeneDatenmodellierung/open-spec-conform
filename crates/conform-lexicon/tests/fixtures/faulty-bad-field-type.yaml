@@ -1,0 +1,23 @@
+# `type: str` is not one of the specification's twenty-seven logical types;
+# `int32` is not either. The enum catches both, one finding each.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-bad-types
+info:
+  title: Orders
+  version: 1.0.0
+  status: active
+  description: Two fields with types the specification does not define.
+  owner: checkout-platform
+servers:
+  production:
+    type: local
+    path: /data/orders.parquet
+    format: parquet
+models:
+  orders:
+    type: table
+    fields:
+      order_id:
+        type: str
+      quantity:
+        type: int32

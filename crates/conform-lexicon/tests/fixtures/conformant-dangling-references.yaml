@@ -1,0 +1,74 @@
+# The three-way resolution, in one document.
+#
+# - `orders.order_id` resolves, and `orders.shipping.postcode` resolves through
+#   a nested object field — the `model.nested_field.field` form the schema
+#   documents. Both are reported as followed-and-found.
+# - `customers.customer_id` names a model this document does not contain, and
+#   `#/definitions/absent` names a definition it does not contain. Both were
+#   searched for. Both are genuinely absent, and both are warnings.
+# - `https://example.org/common.yaml#/definitions/currency` is in another
+#   document. This validator reads one document and performs no network
+#   access, so nobody looked — reported as information, never as missing.
+# - `orders.line_items.sku` points into an ARRAY's element fields. The
+#   specification documents `references` as `model.field` and
+#   `model.nested_field.field` and publishes no spelling for this, so there is
+#   no path to follow. Also information, never "missing": the target is very
+#   probably right there, and this crate is not entitled to say it is not.
+#
+# The schema types all of these as plain strings and has nothing to say about
+# any of them, so the pre-existing validator returns Ok(()).
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-references
+info:
+  title: Orders
+  version: 1.0.0
+  status: active
+  description: Exercises every outcome of following a reference.
+  owner: checkout-platform
+servers:
+  production:
+    type: local
+    path: /data/orders.parquet
+    format: parquet
+models:
+  orders:
+    type: table
+    fields:
+      order_id:
+        type: string
+        required: true
+      shipping:
+        type: object
+        fields:
+          postcode:
+            type: string
+      line_items:
+        type: array
+        items:
+          type: object
+          fields:
+            sku:
+              type: string
+  order_lines:
+    type: table
+    fields:
+      order_id:
+        type: string
+        references: orders.order_id
+      postcode:
+        type: string
+        references: orders.shipping.postcode
+      sku:
+        type: string
+        references: orders.line_items.sku
+      customer_id:
+        type: string
+        references: customers.customer_id
+      currency:
+        $ref: https://example.org/common.yaml#/definitions/currency
+      discount_code:
+        $ref: '#/definitions/absent'
+definitions:
+  present:
+    title: A definition that is here
+    type: string

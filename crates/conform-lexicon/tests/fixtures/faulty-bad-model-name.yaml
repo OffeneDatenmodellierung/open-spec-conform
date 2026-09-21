@@ -1,0 +1,23 @@
+# `models`' `propertyNames` pattern is `^[a-zA-Z0-9_-]+$`. A model key with a
+# space in it is malformed — the key's spelling is wrong, not the key itself
+# unrecognised, which is why this crate codes it as a malformed value rather
+# than an unknown property.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-bad-name
+info:
+  title: Orders
+  version: 1.0.0
+  status: active
+  description: A model whose name the schema will not accept.
+  owner: checkout-platform
+servers:
+  production:
+    type: local
+    path: /data/orders.parquet
+    format: parquet
+models:
+  order lines:
+    type: table
+    fields:
+      sku:
+        type: string
