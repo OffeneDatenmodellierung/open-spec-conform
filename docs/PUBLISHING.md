@@ -101,9 +101,12 @@ and could go first, last, or any time.
 
 With nothing yet on crates.io:
 
-- `cargo package -p conform-core` — **passes**, verification build included.
-- `cargo package` for the other twelve — **fails**, every one with
-  `no matching package named '…' found / location searched: crates.io index`.
+- **Five crates package cleanly today**, verification build included:
+  `conform-core` and the four `conform-model-*` crates. All five depend on no
+  other workspace member, which is exactly why.
+- The other eight **fail**, every one with `no matching package named '…'
+  found / location searched: crates.io index` — `conform-core` for seven of
+  them, `conform-cli` for `conform-web`.
 
 That is the ordering rule showing through. It is **not** a defect in those
 crates, and it disappears one crate at a time as the sequence proceeds. It does
@@ -171,7 +174,8 @@ The first release is the risky one, because the dry run cannot cover it.
 
 The four `conform-model-*` crates depend on nothing internal, so they can be
 done at any point and are a low-risk way to exercise the workflow for real
-before the interdependent crates start.
+before the interdependent crates start. They already pass a full `cargo
+package` today, which no other crate but `conform-core` does.
 
 Publishing one crate per dispatch is slower than `crates: all` and is the right
 way to do it the first time: every step is preceded by a dry run that could not
