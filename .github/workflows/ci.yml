@@ -124,6 +124,47 @@ jobs:
       - name: cargo deny (conform-ffi in isolation)
         run: cargo deny --all-features --manifest-path crates/conform-ffi/Cargo.toml check
 
+  wasm:
+    name: build and run the wasm binding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      # There was no job here until the `wasm` feature existed, and the gap
+      # was not theoretical: this workspace's validator stack reaches
+      # `wasm32-unknown-unknown` through `jsonschema`, `serde_norway` and a
+      # SHA-256 implementation, any one of which could stop compiling for that
+      # target in a patch release. Nothing in the rest of this file would
+      # notice — the host builds fine either way — so the breakage would
+      # arrive as a bug report from whoever tried to build the binding next.
+      #
+      # `--locked` so a green tick here is a green tick for the versions
+      # `Cargo.lock` pins, rather than for whatever resolved on the day.
+      - name: cargo build (wasm32-unknown-unknown)
+        run: |
+          cargo build --locked -p conform-ffi --features wasm \
+            --target wasm32-unknown-unknown --release
+
+      # And then run it, because "it compiles for wasm" and "it works in wasm"
+      # are different claims and this repository has already been caught by the
+      # distance between them: the crate compiled and linked cleanly for this
+      # target and failed on every call, and nothing in the toolchain warned.
+      #
+      # `build.sh` installs the `wasm-bindgen` CLI at exactly the version the
+      # crate's manifest names, generates the Node binding, and refuses to
+      # report success for an artefact it did not produce. `probe.mjs`
+      # instantiates the module, validates a real fixture, and traps on purpose
+      # to demonstrate that a panic here is *not* caught — the guarantee the C
+      # ABI makes and this target cannot keep.
+      - name: instantiate and call the module in Node
+        run: |
+          tools/wasm/build.sh --target nodejs --out "$RUNNER_TEMP/wasm"
+          node tools/wasm/probe.mjs "$RUNNER_TEMP/wasm"
+
   sanitise:
     name: sanitise the C boundary
     runs-on: ubuntu-latest

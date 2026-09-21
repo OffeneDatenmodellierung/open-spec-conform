@@ -87,6 +87,64 @@ still real, but a panic anywhere inside is fatal to the whole instance and a
 caller has to design around it. The self-test is how you find out which world
 you are in on the first call rather than on the first bug.
 
+So the guarantee at the top of this section is stated once more, narrowed to
+what is true: **nothing unwinds across the C boundary on a target that
+unwinds.** The `wasm` feature below is the binding for a target that does not,
+and it does not make the claim.
+
+## The `wasm` feature
+
+Off by default. `--features wasm` adds a `wasm-bindgen` binding — a second,
+smaller surface, alongside the C ABI and changing nothing about it.
+
+```js
+import init, { ConformValidator, panicContract } from "./conform_ffi.js";
+await init();
+const validator = new ConformValidator("odcs");           // no path, no bytes
+const report = JSON.parse(validator.validate("orders.yaml", text));
+validator.free();
+```
+
+Three things are worth knowing before using it.
+
+**A caller names a spec id, never a schema.** `conform_validator_new` takes a
+registry path and a browser has no filesystem, and the fix is *not* a
+constructor that takes schema bytes from the page — that hands the provenance
+decision to the caller and leaves this repository's SHA-256 check as
+decoration. The registry and the vendored schemas are frozen into the artefact
+instead and the digest is re-checked at construction. Its honest limitation:
+both sides are embedded together, so the check catches a registry edited
+without re-hashing and **cannot** speak for the files on disk today. That is
+still `conform registry verify`'s job.
+
+**A panic is fatal, and there is no self-test here that says otherwise.** The
+C ABI's `conform_self_test_panic` returns `CONFORM_STATUS_PANIC` to prove a
+panic was caught; exporting anything with that shape from `wasm32` would be
+exporting a claim, so it is absent. What is exported is `panicContract()`,
+which returns the contract as a string out of the artefact itself, and
+`demonstratePanicIsFatal()`, which panics and does not return. Measured, in
+Node: the call throws `RuntimeError: unreachable`, **and the instance keeps
+answering afterwards** — which is the hazard, not the reassurance, because the
+panicking call's allocations were never released and its destructors never ran
+and nothing will say so. Discard the instance.
+
+**The feature reaches nobody who does not ask for it.**
+`wasm-bindgen` is an optional dependency; `cargo tree -p conform-ffi` does not
+mention it and `cargo tree -p conform-ffi --features wasm` does.
+`tests/the_wasm_feature_is_additive.rs` runs in both configurations and holds
+the C ABI to identical behaviour either way — including that its constructor
+still refuses a registry it cannot read rather than helpfully falling back to
+the embedded bytes.
+
+```sh
+tools/wasm/build.sh                                    # --target web -> website/dist/wasm
+tools/wasm/build.sh --target nodejs --out /tmp/wasm
+node tools/wasm/probe.mjs /tmp/wasm                    # instantiate it and call it
+```
+
+See `tools/wasm/README.md` for why the probe is a script rather than a
+`#[test]`, and `src/wasm.rs` for the panic contract in full.
+
 ## The header
 
 `include/conform.h` is generated and committed, so that a C program does not
@@ -119,8 +177,15 @@ no network. The two tests that need more are gated:
 ```sh
 cargo test -p conform-ffi --features header-check   # shells out to tools/headergen
 cargo test -p conform-ffi --features c-smoke        # needs a C compiler on PATH as `cc`
-cargo test -p conform-ffi --all-features            # both
+cargo test -p conform-ffi --features wasm           # the binding's logic, on the host
+cargo test -p conform-ffi --all-features            # all three
 ```
+
+`--features wasm` needs nothing extra: the module compiles for the host as
+well as for `wasm32`, so the digest gate and the envelope are exercised by
+`cargo test` and read by `cargo clippy` rather than left to a browser. What a
+host cannot reach — the trap, and a real `JsError` — is what
+`tools/wasm/probe.mjs` is for.
 
 Both are self-sufficient from a clean checkout: neither needs a prior
 `cargo build`, and neither assumes an artefact somebody else happened to leave
