@@ -352,11 +352,15 @@ impl<'r> Validators<'r> {
             FileStandard::Odcs => {
                 let slot = self.odcs.get_or_insert_with(|| {
                     if self.origin.is_embedded() {
-                        embedded_schema(self.registry, "odcs", conform_odcs::codes::SCHEMA_PROVENANCE_FAILED)
-                            .and_then(|s| {
-                                OdcsValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
-                                    .map_err(conform_odcs::SchemaError::into_report)
-                            })
+                        embedded_schema(
+                            self.registry,
+                            "odcs",
+                            conform_odcs::codes::SCHEMA_PROVENANCE_FAILED,
+                        )
+                        .and_then(|s| {
+                            OdcsValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
+                                .map_err(conform_odcs::SchemaError::into_report)
+                        })
                     } else {
                         OdcsValidator::from_registry(self.registry)
                             .map_err(conform_odcs::SchemaError::into_report)
@@ -370,11 +374,15 @@ impl<'r> Validators<'r> {
             FileStandard::Odps => {
                 let slot = self.odps.get_or_insert_with(|| {
                     if self.origin.is_embedded() {
-                        embedded_schema(self.registry, "odps", conform_odps::codes::SCHEMA_PROVENANCE_FAILED)
-                            .and_then(|s| {
-                                OdpsValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
-                                    .map_err(conform_odps::SchemaError::into_report)
-                            })
+                        embedded_schema(
+                            self.registry,
+                            "odps",
+                            conform_odps::codes::SCHEMA_PROVENANCE_FAILED,
+                        )
+                        .and_then(|s| {
+                            OdpsValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
+                                .map_err(conform_odps::SchemaError::into_report)
+                        })
                     } else {
                         OdpsValidator::from_registry(self.registry)
                             .map_err(conform_odps::SchemaError::into_report)
@@ -388,11 +396,15 @@ impl<'r> Validators<'r> {
             FileStandard::Odcl => {
                 let slot = self.odcl.get_or_insert_with(|| {
                     if self.origin.is_embedded() {
-                        embedded_schema(self.registry, "odcl", conform_lexicon::codes::SCHEMA_PROVENANCE_FAILED)
-                            .and_then(|s| {
-                                LexiconValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
-                                    .map_err(conform_lexicon::SchemaError::into_report)
-                            })
+                        embedded_schema(
+                            self.registry,
+                            "odcl",
+                            conform_lexicon::codes::SCHEMA_PROVENANCE_FAILED,
+                        )
+                        .and_then(|s| {
+                            LexiconValidator::from_schema_str(s.text, s.spec, s.provenance, &s.name)
+                                .map_err(conform_lexicon::SchemaError::into_report)
+                        })
                     } else {
                         LexiconValidator::from_registry(self.registry)
                             .map_err(conform_lexicon::SchemaError::into_report)
@@ -578,17 +590,15 @@ impl TextValidator for LexiconValidator {
 /// and it is what lets the spec pane show the pin and the drift status of any
 /// specification the moment it is selected, which is the "never more than two
 /// keystrokes away" requirement in plan §4.2.
-fn summarise(
-    registry: &Registry,
-    origin: &RegistryOrigin,
-    only: Option<&str>,
-) -> Vec<SpecSummary> {
+fn summarise(registry: &Registry, origin: &RegistryOrigin, only: Option<&str>) -> Vec<SpecSummary> {
     registry
         .entries()
         .iter()
         .enumerate()
         .filter(|(_, entry)| only.is_none_or(|id| entry.id == id))
-        .map(|(index, entry)| SpecSummary::new(entry, verify_artefact(registry, origin, index, entry)))
+        .map(|(index, entry)| {
+            SpecSummary::new(entry, verify_artefact(registry, origin, index, entry))
+        })
         .collect()
 }
 

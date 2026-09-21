@@ -33,6 +33,7 @@ fn not_recorded() -> String {
         command: conform_cli::model::Command::RegistryList,
         policy: conform_core::GatePolicy::default(),
         registry_path: "<absent>".to_owned(),
+        registry_origin: conform_cli::model::RegistryOrigin::Explicit("<absent>".into()),
         specs: vec![summary],
         documents: Vec::new(),
         unusable: false,

@@ -57,7 +57,15 @@ pub const TOOL_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Whatever the underlying writer returns.
 pub fn render(run: &Run, out: &mut dyn Write) -> io::Result<()> {
     writeln!(out, "{TOOL_NAME} {TOOL_VERSION} — {}", run.command.as_str())?;
-    writeln!(out, "registry: {}", for_terminal(&run.registry_path))?;
+    // `describe()` rather than the bare path: a reader must be able to tell an
+    // embedded catalogue from the one in the directory they are standing in,
+    // and telling them which file it was is not the same as telling them why
+    // that file was the one.
+    writeln!(
+        out,
+        "registry: {}",
+        for_terminal(&run.registry_origin.describe())
+    )?;
 
     if run.command == Command::RegistryList {
         catalogue(run, out)?;
