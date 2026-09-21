@@ -1,0 +1,129 @@
+[package]
+name = "conform-ffi"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011). This crate's
+# cadence is the slowest of the lot on purpose — its compatibility surface is a
+# C ABI, and an ABI that moves is an ABI nobody can link against twice.
+version = "0.1.0"
+
+description = "An optional C ABI over the conformance harness: a handle, bytes in, a JSON report out, and never an unwind across the boundary."
+readme = "README.md"
+keywords = ["ffi", "c-api", "conformance", "validation", "bindings"]
+categories = ["development-tools", "api-bindings", "external-ffi-bindings"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[lib]
+name = "conform_ffi"
+# `cdylib` is what a C program links; `staticlib` is what a C program embeds;
+# `rlib` is what this crate's own integration tests link, so every test below
+# calls the *real* `extern "C"` entry point rather than a Rust-only shadow of
+# it. Dropping the `rlib` would mean testing the boundary through `dlopen`,
+# which tests the loader as much as the code.
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = []
+
+# Regenerating `include/conform.h` and comparing it to the committed copy.
+#
+# A marker feature with no dependencies. `cbindgen` is deliberately NOT a
+# dependency of this crate — it is MPL-2.0 and `deny.toml` allows permissive
+# licences only, and that finding is correct rather than something to except:
+# the plan is explicit (§5.3, risk R4) that `cbindgen` must not appear in this
+# workspace's tree. The generator therefore lives in `tools/headergen`,
+# outside the workspace, exactly as `tools/oracle` does; the test shells out
+# to it.
+#
+# What the feature gates is that shelling-out, which compiles `cbindgen` the
+# first time and wants a network to do it. Neither belongs in a plain
+# `cargo test --workspace`.
+header-check = []
+
+# Compiling and running `tests/smoke/conform_smoke.c` against the built
+# library. A marker feature with no dependencies: what it gates is the
+# *presence of a C toolchain*, which cargo cannot express and which a plain
+# `cargo test --workspace` must not require.
+c-smoke = []
+
+[dependencies]
+# The shared vocabulary. Every finding that crosses this boundary is one of
+# these `Diagnostic`s, serialised.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
+# Where a validator comes from, and the proof the vendored schema is still the
+# bytes it claims to be. The FFI resolves through the registry for the same
+# reason every other consumer does: a verdict issued against an unverified
+# schema is not a conformance verdict, and an embedder cannot see that from the
+# other side of a C ABI.
+conform-registry = { path = "../conform-registry", version = "0.1.0" }
+
+# The two document-shaped adapters. See `src/engine.rs` for why `conform-okf`
+# is deliberately absent: it validates a *directory*, and a bytes-in boundary
+# has nothing to hand it.
+conform-odcs = { path = "../conform-odcs", version = "0.1.0" }
+conform-odps = { path = "../conform-odps", version = "0.1.0" }
+
+# The boundary speaks JSON. This crate owns its own envelope types rather than
+# enabling `conform-core/serde`, for the reason `conform-cli` gives for owning
+# its own: the envelope is *this* crate's compatibility contract, versioned by
+# `schema_version`, and coupling it to the internal shape of a `Diagnostic`
+# would make a field rename in the harness a breaking change for every
+# downstream binding. It also keeps `conform-core`'s default dependency count
+# at zero, which is NFR-001.
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+# The tests read the boundary's JSON back rather than string-matching it, for
+# the same reason `conform-cli`'s do: asserting on a rendering by substring
+# passes for the wrong reasons. Already in the graph.
+serde_json = "1"
+
+# `tests/hostile_text_crosses_as_json.rs` builds its expectations from the
+# adapter's own diagnostics, so that it compares the boundary against the
+# harness rather than against a transcription of it.
+conform-odcs = { path = "../conform-odcs", version = "0.1.0" }
+
+[[test]]
+name = "the_header_matches_the_library"
+path = "tests/the_header_matches_the_library.rs"
+required-features = ["header-check"]
+
+[[test]]
+name = "a_c_program_can_link_and_validate"
+path = "tests/a_c_program_can_link_and_validate.rs"
+required-features = ["c-smoke"]
+
+# NOT `workspace = true`.
+#
+# The workspace sets `unsafe_code = "forbid"`, and `forbid` is not a strong
+# `deny`: it cannot be lifted by an `#[allow]` anywhere beneath it, which is
+# exactly what makes it the right setting for the other six crates. This one
+# crate exists to expose a C ABI, so it must contain `unsafe`, and inheriting
+# the workspace table would make that impossible rather than merely deliberate.
+#
+# Every other lint below is copied verbatim from `[workspace.lints]`, so this
+# crate is held to the same standard as its siblings in every respect except
+# the one it cannot be. `unsafe_code` is `deny` rather than absent, so the
+# opt-out has to be written down at the item that takes it — and there is
+# exactly one such opt-out in this crate, on `mod abi`, which is the only
+# module permitted to contain the word.
+[lints.rust]
+missing_docs                  = "warn"
+missing_debug_implementations = "warn"
+unsafe_code                   = "deny"
+rust_2018_idioms              = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all      = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

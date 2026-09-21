@@ -1,9 +1,9 @@
 # tools/oracle
 
 Records what the **pre-existing** validators in `data-modelling-sdk` say about
-the adapter crates' fixture corpora, so `conform-odcs` and `conform-odps` can
-be tested against the thing they replace rather than against a description of
-it.
+the adapter crates' fixture corpora, so `conform-odcs`, `conform-odps` and
+`conform-lexicon` can be tested against the thing they replace rather than
+against a description of it.
 
 ## What it actually does
 
@@ -12,6 +12,7 @@ It calls the real functions:
 ```rust
 data_modelling_core::validation::schema::validate_odcs_internal(content) -> Result<(), String>
 data_modelling_core::validation::schema::validate_odps_internal(content) -> Result<(), String>
+data_modelling_core::validation::schema::validate_odcl_internal(content) -> Result<(), String>
 ```
 
 compiled from `../../../data-modelling-sdk/crates/core` with
@@ -20,6 +21,7 @@ crate's `tests/fixtures/`, and writes what they returned to
 
 - `crates/conform-odcs/tests/oracle/odcs-verdicts.json`
 - `crates/conform-odps/tests/oracle/odps-verdicts.json`
+- `crates/conform-lexicon/tests/oracle/odcl-verdicts.json`
 
 Nothing here reimplements, ports or paraphrases the oracle's rules. The
 `detail` field of every record is the `String` that function actually returned.

@@ -1,0 +1,3 @@
+# Nothing here but this comment.
+# A YAML document that parses to null — a different mistake from broken syntax,
+# with a different fix, and this crate gives it its own code.

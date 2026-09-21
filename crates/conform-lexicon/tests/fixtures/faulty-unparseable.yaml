@@ -1,0 +1,6 @@
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-broken
+info:
+  title: Orders
+   version: 1.0.0
+  status: active

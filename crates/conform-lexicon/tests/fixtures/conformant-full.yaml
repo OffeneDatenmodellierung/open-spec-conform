@@ -1,0 +1,72 @@
+# A document with nothing wrong with it on any axis this crate checks: it
+# conforms, it carries every field the hygiene rules ask for, and both of its
+# internal references resolve. The negative control for the whole corpus — if
+# a rule fires here, the rule is wrong.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders
+info:
+  title: Orders
+  version: 1.4.0
+  status: active
+  description: One row per customer order accepted by the checkout service.
+  owner: checkout-platform
+  contact:
+    name: Checkout Platform
+    email: checkout-platform@example.org
+    url: https://example.org/teams/checkout-platform
+servers:
+  production:
+    type: postgres
+    host: db.example.org
+    port: 5432
+    database: checkout
+    schema: public
+terms:
+  usage: Internal analytics and finance reporting.
+  limitations: Not for use in customer-facing surfaces without review.
+models:
+  orders:
+    description: One row per accepted order.
+    type: table
+    fields:
+      order_id:
+        description: The order's stable identifier.
+        type: string
+        required: true
+        primaryKey: true
+        unique: true
+      customer_id:
+        description: The customer who placed the order.
+        $ref: '#/definitions/customer_id'
+      total_cents:
+        description: Order total in minor units.
+        type: long
+        required: true
+  order_lines:
+    description: One row per line on an order.
+    type: table
+    fields:
+      order_id:
+        description: The order this line belongs to.
+        type: string
+        required: true
+        references: orders.order_id
+      sku:
+        description: The stock keeping unit ordered.
+        type: string
+        required: true
+definitions:
+  customer_id:
+    title: Customer identifier
+    type: string
+    description: The stable identifier of a customer.
+servicelevels:
+  availability:
+    description: The server is available 99.9% of the time.
+  retention:
+    period: P3Y
+links:
+  documentation: https://example.org/docs/orders
+tags:
+  - checkout
+  - orders

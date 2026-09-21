@@ -1,0 +1,62 @@
+[package]
+name = "conform-lexicon"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011). For this crate the
+# upstream is the Data Contract Specification, which moves on the
+# `datacontract/datacontract-specification` project's schedule and nobody
+# else's.
+version = "0.1.0"
+
+description = "Diagnostic-rich conformance validation for Open Data Contract Lexicon (Data Contract Specification) documents: many located, coded, severity-bearing findings per document, with three-way cross-reference resolution, against a schema whose provenance is enforced."
+readme = "README.md"
+keywords = ["odcl", "datacontract", "conformance", "validation", "diagnostics"]
+categories = ["development-tools", "development-tools::testing"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[dependencies]
+# The shared vocabulary. Every finding this crate raises is one of its
+# `Diagnostic`s and every cross-reference outcome is one of its `Resolution`s.
+# This crate defines no diagnostic, report, gate or resolution type of its own
+# — see `tests/no_bespoke_vocabulary.rs`, which enforces that by reading these
+# sources.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
+# Where the schema comes from, and the proof that it is still the bytes it
+# claims to be. This crate resolves its schema through the registry rather than
+# hard-coding a path, so provenance is enforced at the moment of use rather
+# than asserted in a comment. It is also the only place an upstream URL for
+# this standard is written down in this repository.
+conform-registry = { path = "../conform-registry", version = "0.1.0" }
+
+# The vendored ODCL schema declares JSON Schema **draft-07** (`$schema` in the
+# document says so), where the two Bitol schemas this family also validates
+# declare 2019-09. Draft detection is left to `jsonschema`, which reads that
+# keyword. `default-features = false` drops the `reqwest`-backed remote
+# reference retriever: nothing here touches the network.
+jsonschema = { version = "0.38", default-features = false }
+
+# The document model the schema validator, the hygiene rules and the
+# cross-reference resolver all read.
+serde_json = "1"
+
+# ODCL documents are YAML in practice. `serde_norway` is the maintained fork of
+# `serde_yaml` 0.9 — the same libyaml lineage the pre-existing
+# `validate_odcl_internal` in `data-modelling-sdk` parses with, which is what
+# makes the differential test in `tests/oracle_agreement.rs` a comparison of
+# *rules* rather than of two unrelated YAML parsers. `serde_yaml` itself is
+# unmaintained and drags in `yaml-rust`, which `cargo deny` rejects
+# (RUSTSEC-2024-0320).
+serde_norway = "0.9"
+
+[lints]
+workspace = true

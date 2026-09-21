@@ -88,6 +88,53 @@ fn the_absences_json_reports_are_the_ones_the_registry_itself_names() {
 }
 
 #[test]
+fn the_odcl_entrys_three_absences_are_null_in_json_and_not_recorded_in_the_terminal() {
+    // Named rather than left to the sweep above, because `odcl` is the entry
+    // this binary most recently learned to validate, and a renderer that fills
+    // a field in is likeliest to do it for the entry somebody has just been
+    // editing. `specs.toml` records no homepage, no steward and no licence for
+    // it, and explains each absence in `notes`.
+    let (json, _) = conform_json(&["registry", "list", "--spec", "odcl"]);
+    let odcl = &json["specs"][0];
+    assert_eq!(odcl["id"], serde_json::json!("odcl"));
+
+    for field in ["homepage", "steward", "licence"] {
+        assert!(
+            odcl["upstream"][field].is_null(),
+            "`odcl`.{field} is {}, and the registry records nothing for it",
+            odcl["upstream"][field]
+        );
+    }
+    // Present fields stay present: an absence test that passed by nulling
+    // everything would prove the opposite of what it claims. The values are
+    // not transcribed here — `specs.toml` is the one place they are written
+    // down — only that they are there, and that the terminal shows the same
+    // ones the envelope does.
+    let output = conform(&["registry", "list", "--spec", "odcl"]);
+    assert_eq!(output.code, 0);
+
+    for field in ["repository", "pinned_ref"] {
+        let recorded = odcl["upstream"][field]
+            .as_str()
+            .unwrap_or_else(|| panic!("`odcl`.{field} is recorded and must render as a string"));
+        assert!(!recorded.trim().is_empty());
+        assert!(
+            output.stdout.contains(recorded),
+            "the terminal does not show the `{field}` the envelope reports:\n{}",
+            output.stdout
+        );
+    }
+
+    // And in the terminal, the three absences are words rather than gaps.
+    assert_eq!(
+        output.stdout.matches("(not recorded)").count(),
+        3,
+        "expected exactly the three absences `specs.toml` records for `odcl`:\n{}",
+        output.stdout
+    );
+}
+
+#[test]
 fn the_human_catalogue_says_not_recorded_rather_than_leaving_a_blank() {
     let output = conform(&["registry", "list"]);
     assert_eq!(output.code, 0);

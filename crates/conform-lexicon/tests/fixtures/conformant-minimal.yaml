@@ -1,0 +1,9 @@
+# The smallest document the published schema accepts: the three required root
+# keys, and the two `info` requires. Everything this crate says about it is a
+# hygiene warning, which is the point — a document can satisfy the schema
+# completely and still tell a reader almost nothing.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-minimal
+info:
+  title: Orders
+  version: 0.0.1

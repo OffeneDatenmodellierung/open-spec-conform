@@ -60,7 +60,7 @@ pub struct Common {
     pub json: bool,
 
     /// Restrict everything to one registry entry, by id — `odcs`, `odps`,
-    /// `okf`.
+    /// `okf`, `odcl`.
     #[arg(long, global = true, value_name = "ID")]
     pub spec: Option<String>,
 
