@@ -13,8 +13,10 @@
 //! pre-existing validator meaningful: the two agree on the verdict *by
 //! construction*, and the test proves the construction holds.
 
-use conform_core::{Diagnostic, SpecRef};
-use serde_json::Value;
+use std::collections::BTreeMap;
+
+use conform_core::{Diagnostic, DocumentId, SpecRef};
+use serde_json::{Map, Value};
 
 use crate::codes;
 use crate::schema::at;
@@ -118,7 +120,141 @@ pub(crate) fn hygiene(
         ));
     }
 
+    found.extend(duplicate_stable_ids(contract, document, spec));
+
     found
+}
+
+/// The root arrays whose members carry a `$defs/StableId` under `id`.
+///
+/// Read off the vendored schema rather than remembered: `/properties/servers`
+/// has `items: $defs/Server`, `/properties/schema` has `items:
+/// $defs/SchemaObject`, and both of those definitions give `id` as
+/// `$ref: #/$defs/StableId`. `SchemaObject` carries `properties`, an array of
+/// `$defs/SchemaProperty`, which reaches `StableId` the same way through
+/// `SchemaBaseProperty`'s `allOf` — so the nested property lists are arrays of
+/// stable identifiers too, and [`descend`] follows them.
+///
+/// Deliberately **not** the whole list. `roles`, `slaProperties`, `support`,
+/// `price`, `team.members`, `quality`, `customProperties` and
+/// `authoritativeDefinitions` also hold `StableId`-bearing members, and this
+/// rule does not look at them yet. Saying which arrays are checked is the
+/// honest form of that: a rule whose scope nobody wrote down reads as though
+/// it covered everything.
+const STABLE_ID_ARRAYS: &[&str] = &["servers", "schema"];
+
+/// Every repeated `id` in the arrays this rule checks.
+///
+/// The schema's `$defs/StableId` says, in its own description, *"Must be
+/// unique within its containing array"* — and then constrains only a
+/// `pattern`. Neither root array carries `uniqueItems`, and `uniqueItems`
+/// could not express this anyway: it compares whole members, so two schema
+/// objects sharing an `id` and differing in a description are already
+/// "unique" by that keyword's definition. So the sentence is unenforced by
+/// construction, and a document with two `schema[].id` of `orders` passes the
+/// published schema clean.
+///
+/// What that costs: an `id` is what a reference resolves *by*. Two members
+/// answering to one identifier means anything following a reference has two
+/// candidates and no rule for choosing between them.
+fn duplicate_stable_ids(
+    contract: &Map<String, Value>,
+    document: &DocumentId,
+    spec: &SpecRef,
+) -> Vec<Diagnostic> {
+    let mut found = Vec::new();
+    for key in STABLE_ID_ARRAYS {
+        let Some(Value::Array(members)) = contract.get(*key) else {
+            continue;
+        };
+        let array = format!("/{key}");
+        duplicates_in(members, &array, document, spec, &mut found);
+        for (index, member) in members.iter().enumerate() {
+            descend(
+                member,
+                &format!("{array}/{index}"),
+                document,
+                spec,
+                &mut found,
+            );
+        }
+    }
+    found
+}
+
+/// Follow one member's nested property lists, checking each as its own array.
+///
+/// "Unique within its containing array" is per array, so `/schema/0/properties`
+/// and `/schema/1/properties` may each hold an `id` of `order_id` without
+/// either being a finding — and two `order_id`s inside *one* of them is a
+/// finding. Counting across the whole document would report the first case,
+/// which the specification permits, and that false alarm is worth more care
+/// than the handful of lines it takes to avoid.
+///
+/// Both nesting routes the schema publishes are followed: `properties`, which
+/// `SchemaObject` and the `logicalType: object` branch of `SchemaBaseProperty`
+/// both give as an array of `SchemaProperty`, and `items`, which the
+/// `logicalType: array` branch gives as a single `SchemaItemProperty` carrying
+/// a `properties` array of its own.
+fn descend(
+    node: &Value,
+    pointer: &str,
+    document: &DocumentId,
+    spec: &SpecRef,
+    found: &mut Vec<Diagnostic>,
+) {
+    if let Some(Value::Array(properties)) = node.get("properties") {
+        let array = format!("{pointer}/properties");
+        duplicates_in(properties, &array, document, spec, found);
+        for (index, child) in properties.iter().enumerate() {
+            descend(child, &format!("{array}/{index}"), document, spec, found);
+        }
+    }
+    if let Some(items) = node.get("items") {
+        descend(items, &format!("{pointer}/items"), document, spec, found);
+    }
+}
+
+/// One array, checked for repeated `id` values.
+///
+/// The finding is located at the **repeat**, not at the first occurrence, and
+/// names where the first one is. Pointing at the first would send a reader to
+/// a member that may be entirely correct; the one that has to change is the
+/// one that came second, and a duplicate appearing three times is three
+/// findings rather than one, because each of them is a separate edit.
+fn duplicates_in(
+    members: &[Value],
+    array: &str,
+    document: &DocumentId,
+    spec: &SpecRef,
+    found: &mut Vec<Diagnostic>,
+) {
+    let mut first_seen: BTreeMap<&str, usize> = BTreeMap::new();
+    for (index, member) in members.iter().enumerate() {
+        let Some(id) = member.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(first) = first_seen.insert(id, index) else {
+            continue;
+        };
+        // Put the earlier index back: every later repeat should point at the
+        // *first* occurrence, not at the one before it.
+        first_seen.insert(id, first);
+        found.push(
+            Diagnostic::warning(
+                codes::DUPLICATE_STABLE_ID,
+                at(document, &format!("{array}/{index}/id")),
+                format!("`id` is `{id}`, which `{array}/{first}` already carries"),
+            )
+            .with_help(
+                "the schema's `$defs/StableId` says \"Must be unique within its containing \
+                 array\" and then enforces only a character-set pattern, so this document \
+                 conforms; it does mean anything resolving a reference by this `id` has two \
+                 candidates and no rule for choosing",
+            )
+            .with_spec_ref(spec.clone()),
+        );
+    }
 }
 
 /// Whether a field is missing, explicitly null, or present but carrying

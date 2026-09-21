@@ -1,0 +1,74 @@
+# The control for ODCS206: the same document shape as
+# `duplicate-stable-ids.yaml`, with every identifier distinct.
+#
+# Two things it proves, and the second is the one that matters. Obviously, a
+# document with no repeats raises no duplicate findings. Less obviously,
+# `/schema/0/properties` and `/schema/1/properties` BOTH hold an `id` of
+# `order_id`, and that is not a finding: `$defs/StableId` says unique "within
+# its containing array", and these are two arrays. A rule that counted
+# identifiers across the whole document would report this file, and reporting
+# a document the specification permits is the false alarm that gets a gate
+# switched off.
+version: 1.0.0
+apiVersion: v3.1.0
+kind: DataContract
+id: 1d4a7c90-5e6b-4f27-8a11-0c9d3e2b7f64
+name: Orders
+status: active
+description:
+  purpose: Exercise StableId uniqueness, from the side where nothing is wrong.
+servers:
+  - id: primary
+    server: orders-prod
+    type: postgresql
+    host: db.example.com
+    port: 5432
+    database: retail
+    schema: public
+  - id: replica
+    server: orders-replica
+    type: postgresql
+    host: replica.example.com
+    port: 5432
+    database: retail
+    schema: public
+schema:
+  - id: orders
+    name: orders
+    logicalType: object
+    physicalType: table
+    properties:
+      - id: order_id
+        name: order_id
+        logicalType: string
+        physicalType: uuid
+      - id: order_reference
+        name: order_reference
+        logicalType: string
+        physicalType: text
+      - id: lines
+        name: lines
+        logicalType: array
+        physicalType: jsonb
+        items:
+          logicalType: object
+          properties:
+            - id: sku
+              name: sku
+              logicalType: string
+              physicalType: text
+            - id: stock_keeping_unit
+              name: stock_keeping_unit
+              logicalType: string
+              physicalType: text
+  - id: orders_archive
+    name: orders_archive
+    logicalType: object
+    physicalType: table
+    properties:
+      - id: order_id
+        name: order_id
+        logicalType: string
+        physicalType: uuid
+team:
+  name: Retail Data Platform

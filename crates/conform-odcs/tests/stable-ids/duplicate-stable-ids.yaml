@@ -1,0 +1,79 @@
+# A contract the published schema accepts and `$defs/StableId`'s own sentence
+# forbids.
+#
+# Four repeated identifiers, in three different arrays:
+#
+#   /servers          — two servers answering to `primary`
+#   /schema           — two schema objects answering to `orders`
+#   /schema/0/properties            — two properties answering to `order_id`
+#   /schema/0/properties/2/items/properties — two answering to `sku`, inside
+#                                             an array element's own property
+#                                             list, which is the nesting route
+#                                             a rule that only looked at the
+#                                             root arrays would miss
+#
+# The schema has no `uniqueItems` on either root array, and could not express
+# this with one if it did: `uniqueItems` compares whole members, and every
+# member below differs from its twin somewhere. So this file passes the
+# published schema clean — which is the whole reason ODCS206 exists.
+#
+# Everything else here is deliberately exemplary, so that the only findings
+# this fixture produces are the duplicates.
+version: 1.0.0
+apiVersion: v3.1.0
+kind: DataContract
+id: 8f2c1f4a-2f8e-4a1b-9c3d-6b7e0a5d4c31
+name: Orders
+status: active
+description:
+  purpose: Exercise StableId uniqueness, which the schema states and cannot check.
+servers:
+  - id: primary
+    server: orders-prod
+    type: postgresql
+    host: db.example.com
+    port: 5432
+    database: retail
+    schema: public
+  - id: primary
+    server: orders-replica
+    type: postgresql
+    host: replica.example.com
+    port: 5432
+    database: retail
+    schema: public
+schema:
+  - id: orders
+    name: orders
+    logicalType: object
+    physicalType: table
+    properties:
+      - id: order_id
+        name: order_id
+        logicalType: string
+        physicalType: uuid
+      - id: order_id
+        name: order_reference
+        logicalType: string
+        physicalType: text
+      - id: lines
+        name: lines
+        logicalType: array
+        physicalType: jsonb
+        items:
+          logicalType: object
+          properties:
+            - id: sku
+              name: sku
+              logicalType: string
+              physicalType: text
+            - id: sku
+              name: stock_keeping_unit
+              logicalType: string
+              physicalType: text
+  - id: orders
+    name: orders_archive
+    logicalType: object
+    physicalType: table
+team:
+  name: Retail Data Platform
