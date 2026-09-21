@@ -56,7 +56,7 @@
 //! this tool be adopted without changing which documents an estate believes
 //! are conformant — and a corpus rule that gated would break it from the
 //! outside. If a cross-document link should fail a build, that is
-//! `--gate warning`, which is the caller's decision to make and not this
+//! `--gate warnings`, which is the caller's decision to make and not this
 //! module's.
 
 use std::collections::BTreeMap;
