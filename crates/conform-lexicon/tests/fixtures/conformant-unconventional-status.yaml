@@ -1,0 +1,23 @@
+# `info.status` outside the conventional set. The schema publishes those five
+# values under `examples`, not `enum`, so it has no way to object and the
+# pre-existing validator returns Ok(()). Tooling that switches on `status`
+# will not recognise this one.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-status
+info:
+  title: Orders
+  version: 1.0.0
+  status: mothballed
+  description: One row per customer order.
+  owner: checkout-platform
+servers:
+  production:
+    type: local
+    path: /data/orders.parquet
+    format: parquet
+models:
+  orders:
+    type: table
+    fields:
+      order_id:
+        type: string

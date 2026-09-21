@@ -105,22 +105,34 @@ only have come from a document, and none does.
 
 ## Which adapter checks what
 
-A file is routed by its `kind` key: `DataContract` to `conform-odcs`,
-`DataProduct` to `conform-odps`. A directory holding an `index.md` is read as
-an OKF bundle by `conform-okf`. `--spec` overrides the routing.
+Each standard is routed by the discriminator its own specification defines,
+never by one borrowed from a sibling:
+
+| Found | Routed to | Because |
+|---|---|---|
+| `kind: DataContract` | `conform-odcs` | Bitol's discriminator |
+| `kind: DataProduct` | `conform-odps` | Bitol's discriminator |
+| a root `dataContractSpecification` | `conform-lexicon` | the ODCL schema's `required` makes it mandatory |
+| a directory holding an `index.md` | `conform-okf` | a bundle is a tree, not a file |
+
+`kind` is read first, so a document that calls itself an ODCS contract goes to
+ODCS whatever else it carries. `--spec` overrides the routing entirely.
 
 Sniffing is a *routing* decision and never a verdict — the distinction matters,
 because the pre-existing `validate_odcs_internal` sniffed its input, silently
 validated a `dataContractSpecification` document against a different schema,
 and reported the result as an ODCS verdict. Here, if the routing sends a
-document to ODCS and it is not an ODCS contract, ODCS says so. A file nothing
-recognises is reported under `CLI002`, never skipped, and paths that hold
-nothing checkable are an error rather than a silence: a file quietly ignored is
-a file everybody believes was checked.
+document to ODCS and it is not an ODCS contract, ODCS says so. Routing that
+same document to `conform-lexicon` is the opposite of that defect rather than a
+repetition of it: it is answered for under ODCL codes, against the ODCL schema,
+and if it turns out not to be an ODCL document the ODCL adapter fails it. A
+file nothing recognises is reported under `CLI002`, never skipped, and paths
+that hold nothing checkable are an error rather than a silence: a file quietly
+ignored is a file everybody believes was checked.
 
-`odcl` and `cads` are catalogued, vendored and verified with the rest, and have
-no validator in this binary. `--spec odcl` refuses under `CLI005` and exits 2
-rather than reporting a clean run over zero documents.
+`cads` is catalogued, vendored and verified with the rest, and has no validator
+in this binary. `--spec cads` refuses under `CLI005` and exits 2 rather than
+reporting a clean run over zero documents.
 
 ## The console
 

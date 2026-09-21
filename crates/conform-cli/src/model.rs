@@ -41,12 +41,18 @@ impl Command {
     }
 }
 
-/// The three standards this binary has an adapter for.
+/// The four standards this binary has an adapter for.
 ///
-/// The registry holds five entries. `odcl` and `cads` are catalogued, vendored
-/// and verified like the rest — there is simply no validator for them yet, and
+/// The registry holds five entries. `cads` is catalogued, vendored and
+/// verified like the rest — there is simply no validator for it yet, and
 /// [`crate::codes::NO_ADAPTER_FOR_SPEC`] says so rather than letting a
-/// `--spec odcl` run report a clean bill of health it never earned.
+/// `--spec cads` run report a clean bill of health it never earned.
+///
+/// Every identifier below is read from the adapter crate's own `SPEC_ID`
+/// constant, never typed out here. `conform-lexicon`'s is `odcl` and not
+/// `lexicon`, because the registry issues `odcl` and the registry is the
+/// single source of truth for what a standard is called; a second spelling in
+/// this file is a second source of truth, and one of them would be wrong.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Standard {
     /// Open Data Contract Standard — `kind: DataContract`.
@@ -55,11 +61,13 @@ pub enum Standard {
     Odps,
     /// Open Knowledge Format — a directory of markdown, not a single file.
     Okf,
+    /// Open Data Contract Lexicon — a root `dataContractSpecification` key.
+    Odcl,
 }
 
 impl Standard {
     /// Every standard with an adapter, in registry order.
-    pub const ALL: [Self; 3] = [Self::Odcs, Self::Odps, Self::Okf];
+    pub const ALL: [Self; 4] = [Self::Odcs, Self::Odps, Self::Okf, Self::Odcl];
 
     /// The `specs.toml` identifier this standard's schema is registered under.
     #[must_use]
@@ -68,6 +76,7 @@ impl Standard {
             Self::Odcs => conform_odcs::SPEC_ID,
             Self::Odps => conform_odps::SPEC_ID,
             Self::Okf => conform_okf::SPEC_ID,
+            Self::Odcl => conform_lexicon::SPEC_ID,
         }
     }
 
@@ -87,6 +96,7 @@ impl Standard {
         match self {
             Self::Odcs => Some(FileStandard::Odcs),
             Self::Odps => Some(FileStandard::Odps),
+            Self::Odcl => Some(FileStandard::Odcl),
             Self::Okf => None,
         }
     }
@@ -95,8 +105,8 @@ impl Standard {
 /// A standard whose document is one file.
 ///
 /// The distinction is not pedantry, it is what keeps an unreachable branch out
-/// of the engine. Two of the three adapters here take a named string; the
-/// third takes a directory and walks it. A single `Standard` for both means
+/// of the engine. Three of the four adapters here take a named string; the
+/// fourth takes a directory and walks it. A single `Standard` for both means
 /// every place that dispatches on "which text validator" has an OKF arm that
 /// cannot happen and must still be written — and an arm that cannot happen is
 /// an arm nobody tests. Making the invariant a type instead means the compiler
@@ -107,15 +117,18 @@ pub enum FileStandard {
     Odcs,
     /// Open Data Product Standard.
     Odps,
+    /// Open Data Contract Lexicon.
+    Odcl,
 }
 
 impl FileStandard {
-    /// This as one of the three standards.
+    /// This as one of the four standards.
     #[must_use]
     pub const fn standard(self) -> Standard {
         match self {
             Self::Odcs => Standard::Odcs,
             Self::Odps => Standard::Odps,
+            Self::Odcl => Standard::Odcl,
         }
     }
 }
@@ -295,9 +308,9 @@ pub const COMMAND_LINE: &str = "<command line>";
 
 /// One thing that was examined, and everything found in it.
 ///
-/// "Document" is meant broadly: an ODCS contract, an ODPS product, an OKF
-/// bundle directory, the registry file itself, or a vendored artefact that was
-/// re-hashed. What they have in common is the only thing that matters here —
+/// "Document" is meant broadly: an ODCS contract, an ODPS product, an ODCL
+/// data contract, an OKF bundle directory, the registry file itself, or a
+/// vendored artefact that was re-hashed. What they have in common is the only thing that matters here —
 /// each is a named thing with a [`ConformanceReport`] about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentOutcome {

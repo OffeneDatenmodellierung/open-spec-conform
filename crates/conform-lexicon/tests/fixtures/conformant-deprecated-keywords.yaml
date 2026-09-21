@@ -1,0 +1,35 @@
+# Every key the vendored schema marks with a `deprecationMessage`, all five of
+# them, in the two places it marks them: a field (`primary`, `example`) and a
+# definition (`domain`, `name`, `example`).
+#
+# `deprecationMessage` is an annotation, not an assertion. No JSON Schema
+# validator objects to any of this, and the pre-existing validator returns
+# Ok(()). This crate quotes upstream's own wording back under ODCL208.
+dataContractSpecification: 1.2.1
+id: urn:datacontract:checkout:orders-deprecated
+info:
+  title: Orders
+  version: 1.0.0
+  status: active
+  description: Uses keys the specification has since deprecated.
+  owner: checkout-platform
+servers:
+  production:
+    type: local
+    path: /data/orders.parquet
+    format: parquet
+models:
+  orders:
+    type: table
+    fields:
+      order_id:
+        type: string
+        primary: true
+        example: ORD-00042
+definitions:
+  customer_id:
+    domain: sales
+    name: customer_id
+    title: Customer identifier
+    type: string
+    example: CUST-00007

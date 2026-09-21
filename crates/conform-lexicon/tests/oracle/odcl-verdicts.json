@@ -1,0 +1,131 @@
+{
+  "fixtures": [
+    {
+      "detail": null,
+      "fixture": "conformant-dangling-references.yaml",
+      "sha256": "aca8baf2ace5fa337a63f95fd707443e37ecc568ccea836f6a34350be0e9711d",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-deprecated-keywords.yaml",
+      "sha256": "9f1b07701c07d5c188b8e4e13043692108b42df5afe000681019037e6525044f",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-full.yaml",
+      "sha256": "3c2391f42f5d1f589cf8b9c5ff615ee208585e113c4e089fa9deb44c33541125",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-minimal.yaml",
+      "sha256": "be14ca0b00cba0009ae813b5f589ca228da55f5ae3150b01632d23fda1ad0e56",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-older-version.yaml",
+      "sha256": "606b3a748af2ee04e1a39f8893dd1795faeb764608611e0c15f59d6e86f8db54",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-open-root-key.yaml",
+      "sha256": "35d5ecf3842965a67a5eaa07ffdd60f06ed58731cbdece6a806e96af71ae3a58",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-server-dispatch-is-dead.yaml",
+      "sha256": "a81eeae6291b0f69ae90fc764b296354739452dee3c08c34458c187a2fa8e0fb",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-unconventional-status.yaml",
+      "sha256": "394d2ca40e425036d2b64d85420839d7364f04f08a79a4f5cac9d0aa6d7c931a",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-untyped-field.yaml",
+      "sha256": "dd14db360c9803c9ebea513bb0f81b23125809811305e1e258ca67792ef8e52c",
+      "verdict": "ok"
+    },
+    {
+      "detail": "ODCL validation failed at path '/models/orders/fields/order_id/type': \"str\" is not one of \"number\", \"decimal\" or 25 other candidates",
+      "fixture": "faulty-bad-field-type.yaml",
+      "sha256": "4575ca0e153b75f97441d6b6220f6c1aecc7565c9e410e0100bbbc401e3bd4de",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCL validation failed at path '/models': \"order lines\" does not match \"^[a-zA-Z0-9_-]+$\"",
+      "fixture": "faulty-bad-model-name.yaml",
+      "sha256": "edcf93fbd62eee188bd85cb09d38f280c1ce06c1016c8bfd105f308b6ea272f0",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCL validation failed at path 'root': null is not of type \"object\"",
+      "fixture": "faulty-empty.yaml",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCL validation failed at path '/dataContractSpecification': \"2.0.0\" is not one of \"1.2.1\", \"1.2.0\" or 5 other candidates",
+      "fixture": "faulty-many-faults.yaml",
+      "sha256": "e79d246b2ab056dd71e561af93e3fbcf41d3547c09c1befa3b1b7c75ed737726",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCL validation failed at path '/info': \"title\" is a required property",
+      "fixture": "faulty-missing-required.yaml",
+      "sha256": "95bb9494ceb2d2383b4f0ce732b12e86a9b37cd87002128374fba1ce8e15e428",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCL validation failed at path 'root': \"dataContractSpecification\" is a required property",
+      "fixture": "faulty-odcs-document.yaml",
+      "sha256": "07a0173f0c91294b93fdafda92b3836d0df3a7612dd1a36c2668dc11918fd135",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCL validation failed at path 'root': null is not of type \"object\"",
+      "fixture": "faulty-only-comments.yaml",
+      "sha256": "e80672adce13b433532f64946e06fc421af3e879f9d002ec5052f52874ae26f2",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCL validation failed at path 'root': [{\"dataContractSpecification\":\"1.2.1\"},{\"id\":\"urn:datacontract:checkout:orders-list\"}] is not of type \"object\"",
+      "fixture": "faulty-root-not-an-object.yaml",
+      "sha256": "7e3d3a95ae50f51868a4ee439193b0e3e64b6d3266c41a7e903cf24b59334805",
+      "verdict": "err"
+    },
+    {
+      "detail": "Failed to parse YAML: mapping values are not allowed in this context at line 5 column 11",
+      "fixture": "faulty-unparseable.yaml",
+      "sha256": "84ac7fc7fed9fb8a62c50735e50e95dcb1fbc970680cb164c9bfcc073818cf19",
+      "verdict": "err"
+    }
+  ],
+  "how_to_regenerate": "cargo run --manifest-path tools/oracle/Cargo.toml",
+  "oracle": {
+    "crate": "data-modelling-core",
+    "crate_version": "2.4.0",
+    "features": [
+      "schema-validation"
+    ],
+    "function": "data_modelling_core::validation::schema::validate_odcl_internal",
+    "schema_it_reads": "schemas/odcl-json-schema-1.2.1.json",
+    "schema_it_reads_sha256": "0badffad06608e912b81b91fb7fe974a6cdcd50676df2144c96946fb1f2bd815",
+    "source_commit": "22c9c2183d7641306ff42f7cd5c34540ece22715",
+    "source_repository": "data-modelling-sdk"
+  },
+  "recorded_by": "tools/oracle",
+  "schema_version": 1,
+  "vendored_schema": {
+    "path": "schemas/odcl-json-schema-1.2.1.json",
+    "sha256": "0badffad06608e912b81b91fb7fe974a6cdcd50676df2144c96946fb1f2bd815"
+  }
+}

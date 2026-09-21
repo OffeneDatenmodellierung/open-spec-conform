@@ -22,6 +22,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use conform_core::{ConformanceReport, Diagnostic, GatePolicy, Location, Validator};
+use conform_lexicon::LexiconValidator;
 use conform_odcs::OdcsValidator;
 use conform_odps::OdpsValidator;
 use conform_registry::Registry;
@@ -231,7 +232,7 @@ fn validate(registry: &Registry, request: &Request, run: &mut Run) {
                 )
                 .with_help(
                     "nothing was checked, which is why this is an error and not silence — pass a \
-                     path to a contract, a product, or an OKF bundle directory",
+                     path to a contract, a product, a data contract, or an OKF bundle directory",
                 ),
             ),
         ));
@@ -315,6 +316,7 @@ struct Validators<'r> {
     registry: &'r Registry,
     odcs: Option<Result<OdcsValidator, ConformanceReport>>,
     odps: Option<Result<OdpsValidator, ConformanceReport>>,
+    odcl: Option<Result<LexiconValidator, ConformanceReport>>,
 }
 
 impl<'r> Validators<'r> {
@@ -323,6 +325,7 @@ impl<'r> Validators<'r> {
             registry,
             odcs: None,
             odps: None,
+            odcl: None,
         }
     }
 
@@ -354,16 +357,27 @@ impl<'r> Validators<'r> {
                     Err(report) => Err(report),
                 }
             }
+            FileStandard::Odcl => {
+                let slot = self.odcl.get_or_insert_with(|| {
+                    LexiconValidator::from_registry(self.registry)
+                        .map_err(conform_lexicon::SchemaError::into_report)
+                });
+                match slot {
+                    Ok(validator) => Ok(validator),
+                    Err(report) => Err(report),
+                }
+            }
         }
     }
 }
 
 /// The one thing the engine asks of a single-document adapter.
 ///
-/// `OdcsValidator` and `OdpsValidator` have the same shape and no common
-/// trait — each implements [`Validator`] over its *own* `Document` type, which
-/// is the right design for them and the wrong one for a caller that wants to
-/// hold either. This is that caller's view: name and text in, report out.
+/// `OdcsValidator`, `OdpsValidator` and `LexiconValidator` have the same shape
+/// and no common trait — each implements [`Validator`] over its *own*
+/// `Document` type, which is the right design for them and the wrong one for a
+/// caller that wants to hold any of them. This is that caller's view: name and
+/// text in, report out.
 trait TextValidator {
     /// Validate a document given by name and text.
     fn validate_text(&self, id: &str, text: &str) -> ConformanceReport;
@@ -378,6 +392,12 @@ impl TextValidator for OdcsValidator {
 impl TextValidator for OdpsValidator {
     fn validate_text(&self, id: &str, text: &str) -> ConformanceReport {
         self.validate(&conform_odps::Document::new(id, text))
+    }
+}
+
+impl TextValidator for LexiconValidator {
+    fn validate_text(&self, id: &str, text: &str) -> ConformanceReport {
+        self.validate(&conform_lexicon::Document::new(id, text))
     }
 }
 

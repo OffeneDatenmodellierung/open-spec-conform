@@ -1,0 +1,4 @@
+# A sequence at the root. The schema says `"type": "object"`, so this is a
+# conformance failure and not a parse failure — the YAML is perfectly valid.
+- dataContractSpecification: 1.2.1
+- id: urn:datacontract:checkout:orders-list

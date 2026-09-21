@@ -294,6 +294,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "conform-core",
+ "conform-lexicon",
  "conform-odcs",
  "conform-odps",
  "conform-okf",
@@ -310,6 +311,17 @@ name = "conform-core"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "conform-lexicon"
+version = "0.1.0"
+dependencies = [
+ "conform-core",
+ "conform-registry",
+ "jsonschema",
+ "serde_json",
+ "serde_norway",
 ]
 
 [[package]]
