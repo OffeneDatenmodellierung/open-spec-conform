@@ -1,15 +1,23 @@
 # conform-web
 
-The Open Spec Conform site: one self-contained page describing the tool, the
-crate family, and the specification catalogue with its canonical upstream
-links.
+The Open Spec Conform site: one page describing the tool, the crate family, and
+the specification catalogue with its canonical upstream links — and, when the
+build produced one, the validator itself compiled to WebAssembly.
 
 Not published to crates.io. The artefact this crate produces is an HTML file.
 
 ```sh
-./website/build.sh              # writes website/dist/index.html
-cargo run -p conform-web        # the same thing, without the toolchain bootstrap
+./website/build.sh              # the module, then website/dist/index.html
+cargo run -p conform-web        # the page alone, without the toolchain bootstrap
 ```
+
+The page is self-contained — inline stylesheet, inline scripts, every fact
+written into the file — with exactly one exception, and only when there is
+something to except: a wired demo imports `./wasm/conform_ffi.js` from beside
+itself. That is also the one thing an ES module cannot do from a `file://`
+URL, so the panel reports the browser's own error rather than presenting a
+validate button that does nothing. Everything else on the page works from
+`file://` exactly as it always did.
 
 ## Nothing about a specification is written in this crate
 
@@ -116,12 +124,36 @@ element while neutralising an override.
 
 ## Validating in the browser
 
-Not in this build, and `docs/plan` §6.4 says why with the evidence. The short
-version: the validator does compile to WebAssembly and the C ABI does work
-across the boundary — both were built and run — but the only constructor takes
-a registry path, and on `wasm32-unknown-unknown` the crate's promise that no
-panic crosses the boundary is provably false.
+Wired, now that there is something honest to wire. `docs/plan` §6.4 recorded
+two blockers and §6.5 records how each was answered: `conform-ffi`'s `wasm`
+feature embeds the registry and the vendored schemas and re-hashes them at
+construction, so there is nothing to read from a filesystem and nothing to
+take from the page; and the binding states the panic contract in the
+artefact's own words instead of claiming a net `wasm32-unknown-unknown` cannot
+provide.
 
-`Demo` is a typed value rather than a paragraph. Wiring the demo up means
-producing a different variant; there is no way to edit the prose into claiming
-something untrue without the type changing under it.
+`Demo` is still a typed value rather than a paragraph, and now it is a
+*measurement*. `Demo::look_for` stats the two artefacts and the variant
+follows from what it found, so a build that produced no module — no target
+installed, no `wasm-bindgen` CLI, a compiler error — renders a page that says
+so and names the files it went looking for. `website/build.sh` treats the
+WebAssembly step as allowed to fail for exactly that reason: a missing module
+costs a reader the validation box, and a deploy that failed over it would cost
+them the catalogue too.
+
+Two rules the panel is held to by
+`tests/the_demo_claims_only_what_was_built.rs`:
+
+- **Nothing about the module is written into the page.** The standards in the
+  `select`, the version and the sentence about what a panic does are all read
+  from the compiled artefact at run time. A `select` that shipped with options
+  in it could offer a standard the module beside it cannot validate.
+- **No string is ever handed to the HTML parser.** A diagnostic quotes the
+  reader's own pasted document verbatim; every finding is built with
+  `createElement` and written with `textContent`. The scan for `.innerHTML`
+  and its relatives carries a control, because an earlier, cruder version of
+  it flagged the comment that forbids the thing.
+
+Both were also checked in a real browser rather than only in a test: a
+document whose `status` field is `<img src=x onerror=…><script>…</script>`
+renders as text, produces no `img` and no `script` element, and sets no global.

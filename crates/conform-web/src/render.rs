@@ -27,16 +27,24 @@
 //! and must not be — escaping a stylesheet would produce a stylesheet that
 //! does not parse.
 //!
-//! # The script touches no data
+//! # Nothing is interpolated into a script, and there is no `innerHTML`
 //!
-//! The page carries about forty lines of JavaScript, and what they do is
-//! toggle the `hidden` attribute on elements the generator already wrote.
-//! Nothing is interpolated into a script literal, no element is built from a
-//! string at runtime, and there is no `innerHTML` anywhere. That is a design
-//! decision rather than a coincidence: a generator that escapes perfectly for
-//! HTML and then hands the same value to `innerHTML` has escaped for the wrong
-//! grammar, and the second boundary is the one people forget. There is no
-//! second boundary here.
+//! Two scripts. [`SCRIPT`] filters the catalogue and highlights the
+//! navigation, and touches no data at all: it toggles the `hidden` attribute
+//! on elements the generator already wrote. [`DEMO_SCRIPT`] drives the
+//! in-browser validator and does build elements at run time — from diagnostics
+//! the WebAssembly module produced about a document the reader pasted in,
+//! which is the most hostile text on the page. It builds every one of them
+//! with `createElement` and writes it with `textContent`.
+//!
+//! Neither script has a value from this generator interpolated into it. Both
+//! are constants; the one thing [`DEMO_SCRIPT`] needs — where the module is —
+//! it reads from a `data-` attribute that went through [`for_html`] like
+//! everything else. That is a design decision rather than a coincidence: a
+//! generator that escapes perfectly for HTML and then hands the same value to
+//! a script literal or to `innerHTML` has escaped for the wrong grammar, and
+//! the second boundary is the one people forget. There is no second boundary
+//! here.
 
 use std::fmt::Write as _;
 
@@ -44,7 +52,7 @@ use conform_cli::model::{SpecSummary, VerifyStatus};
 
 use crate::escape::for_html;
 use crate::manifests::CrateEntry;
-use crate::site::{Demo, Site, SpecCard};
+use crate::site::{Demo, Module, Site, SpecCard};
 
 /// What the page calls a field nobody could determine.
 ///
@@ -55,11 +63,18 @@ const NOT_RECORDED: &str = "(not recorded)";
 
 /// Render the whole page.
 ///
-/// One self-contained HTML document: the stylesheet and the script are inline,
-/// no asset is fetched, and nothing is loaded from a network. It therefore
-/// renders identically from `file://`, from a static host and from an archive,
-/// which is also what makes it possible for a test to assert on exactly the
-/// bytes a reader will see.
+/// One self-contained HTML document: the stylesheet and both scripts are
+/// inline, nothing is loaded from a network, and every fact on it is written
+/// into the file. A test can therefore assert on exactly the bytes a reader
+/// will see.
+///
+/// One thing is fetched, and only when there is one to fetch: a
+/// [`Demo::Wired`] page imports the WebAssembly module from a path beside
+/// itself. That is the single dependency on being *served* rather than opened
+/// — an ES module and a `.wasm` are both unreachable from `file://` — and the
+/// page handles it the only honest way, by showing the browser's own error in
+/// the demo panel. Everything else on the page, catalogue included, works from
+/// a `file://` URL exactly as it always did.
 #[must_use]
 pub fn page(site: &Site) -> String {
     let mut out = String::with_capacity(64 * 1024);
@@ -558,6 +573,7 @@ fn crate_row(out: &mut String, member: &CrateEntry) {
 fn demo(out: &mut String, site: &Site) {
     out.push_str("<section id=\"try\">\n<h2>Validate in the browser</h2>\n");
     match &site.demo {
+        Demo::Wired(module) => wired_demo(out, module),
         Demo::NotWired { because, evidence } => {
             let _ = writeln!(
                 out,
@@ -599,6 +615,131 @@ fn demo(out: &mut String, site: &Site) {
         }
     }
     out.push_str("</section>\n");
+}
+
+/// The demo, when a module was found next to the page.
+///
+/// # Every claim on this panel comes out of the module
+///
+/// The standards on offer, the library version and — the one that matters —
+/// the sentence about what a panic does are all read from the compiled
+/// artefact at run time, by the script below. None of them is written here.
+/// That is the same rule the catalogue follows for `specs.toml`, applied to
+/// the one fact a page would be most tempted to soften: `conform-ffi` cannot
+/// catch a panic on `wasm32-unknown-unknown`, and the sentence saying so is
+/// the module's own, so it cannot be edited into something friendlier without
+/// editing the thing that behaves that way.
+///
+/// # What this section writes, and what it refuses to
+///
+/// Static markup and two measured byte counts. The `href` of the module goes
+/// into a `data-` attribute rather than into a script literal, so nothing in
+/// this file is ever interpolated into JavaScript — see this module's opening
+/// note, which that would otherwise have made untrue.
+fn wired_demo(out: &mut String, module: &Module) {
+    let _ = writeln!(
+        out,
+        "<div id=\"demo\" data-module=\"{}\">",
+        for_html(&module.script_href),
+    );
+
+    out.push_str(
+        "<p>This page carries the validator itself, compiled to WebAssembly. The document \
+         below never leaves the browser: there is no upload, no request and no server \
+         involved in the verdict.</p>\n",
+    );
+
+    out.push_str("<p id=\"demo-status\" class=\"not-wired\">Loading the validator…</p>\n");
+
+    out.push_str("<div id=\"demo-ui\" hidden>\n");
+    out.push_str("<div class=\"demo-controls\">\n");
+    out.push_str("<label for=\"demo-spec\">Standard</label>\n");
+    // Deliberately empty: the options are the spec ids the module reports it
+    // carries a verified schema for. A list written here could offer a
+    // standard this artefact cannot validate.
+    out.push_str("<select id=\"demo-spec\"></select>\n");
+    out.push_str("<button id=\"demo-run\" type=\"button\">Validate</button>\n");
+    out.push_str("</div>\n");
+    out.push_str(
+        "<label for=\"demo-document\" class=\"visually-hidden\">The document to check</label>\n",
+    );
+    out.push_str(
+        "<textarea id=\"demo-document\" rows=\"14\" spellcheck=\"false\" \
+         aria-describedby=\"demo-status\" placeholder=\"Paste a document here, or press \
+         Validate on an empty one to see what the harness says about that.\"></textarea>\n",
+    );
+    out.push_str("<div id=\"demo-verdict\" hidden></div>\n");
+    out.push_str("<ol id=\"demo-findings\" class=\"findings\"></ol>\n");
+    out.push_str("<p id=\"demo-provenance\" class=\"provenance\"></p>\n");
+    out.push_str("</div>\n");
+
+    out.push_str(
+        "<noscript><p class=\"not-wired\"><strong>This panel needs JavaScript.</strong> \
+         The validator is a WebAssembly module and a script is what loads it. Everything else \
+         on this page works without one.</p></noscript>\n",
+    );
+
+    out.push_str("<h3>What a verdict here is, and is not</h3>\n");
+    out.push_str("<ul>\n");
+    out.push_str(
+        "<li><strong>The schema is the one this repository vendored</strong>, compiled into \
+         the module and re-hashed against the digest <code>specs.toml</code> records for it \
+         before any verdict is issued. There is no way to hand it a schema of your own — that \
+         would move the provenance decision to whoever opened the page, and this project \
+         exists because of a file that was vendored with no version, no source and no \
+         date.</li>\n",
+    );
+    out.push_str(
+        "<li><strong>It cannot speak for the files on disk today.</strong> The registry and \
+         the schema are frozen into the module together, so the check here catches a registry \
+         edited without re-hashing and nothing else. Drift in a checkout is what \
+         <code>conform registry verify</code> is for, in CI.</li>\n",
+    );
+    out.push_str(
+        "<li id=\"demo-panic\"><strong>A panic is fatal to this validator.</strong> The \
+         sentence that appears here is read from the module rather than written on this \
+         page.</li>\n",
+    );
+    out.push_str("</ul>\n");
+
+    out.push_str("<h3>What is being loaded</h3>\n");
+    out.push_str("<div class=\"scroller\">\n<table class=\"evidence\">\n<thead><tr>");
+    for heading in ["Artefact", "Bytes"] {
+        let _ = write!(out, "<th scope=\"col\">{}</th>", for_html(heading));
+    }
+    out.push_str("</tr></thead>\n<tbody>\n");
+    for (href, bytes) in [
+        (&module.script_href, module.script_bytes),
+        (&module.wasm_href, module.wasm_bytes),
+    ] {
+        let _ = writeln!(
+            out,
+            "<tr><th scope=\"row\"><code>{}</code></th><td>{}</td></tr>",
+            for_html(href),
+            for_html(&bytes.to_string()),
+        );
+    }
+    out.push_str("</tbody>\n</table>\n</div>\n");
+    out.push_str(
+        "<p>Measured when this page was generated, uncompressed. A static host serves both \
+         compressed; the module is mostly the JSON Schema implementation and the Unicode \
+         tables it reaches through.</p>\n",
+    );
+
+    out.push_str(
+        "<p>The same check runs from a terminal against a checkout, where the registry and \
+         the vendored bytes are both on disk and the digest is verified against them rather \
+         than against a copy compiled in alongside.</p>\n",
+    );
+    out.push_str(
+        "<pre><code>cargo run -p conform-cli -- validate path/to/contract.yaml\n\
+         cargo run -p conform-cli -- registry verify --check</code></pre>\n",
+    );
+
+    out.push_str("</div>\n");
+    out.push_str("<script type=\"module\">\n");
+    out.push_str(DEMO_SCRIPT);
+    out.push_str("</script>\n");
 }
 
 /// Where the page came from.
@@ -733,6 +874,136 @@ fn filter_key(spec: &SpecSummary) -> String {
 /// Inline, like everything else: one file that renders from `file://` is
 /// easier to deploy, easier to archive and easier to assert on than a page
 /// plus an asset directory.
+/// The script that drives the in-browser validator.
+///
+/// # No value from this generator is interpolated into it
+///
+/// It is a constant. The one thing it needs from the page — where the module
+/// is — it reads from a `data-` attribute that went through
+/// [`escape::for_html`] like every other value on the page. That keeps the
+/// rule this module opens with intact: there is one escaping boundary here,
+/// HTML, and nothing is ever escaped for a second grammar.
+///
+/// # No `innerHTML`, and this is the section where that matters most
+///
+/// A diagnostic message quotes the document that caused it, verbatim — the
+/// adapters deliberately do not sanitise what they quote, because escaping is
+/// not idempotent and belongs at the point of display. Here the document is
+/// whatever the reader pasted in. Every finding is therefore built with
+/// `createElement` and written with `textContent`, which is the browser's own
+/// escaping and the only kind that cannot be got wrong by forgetting a call.
+/// A single `innerHTML` in this function would make the page a
+/// self-XSS machine.
+///
+/// # A failure to load is shown, not swallowed
+///
+/// A page opened from `file://` cannot import an ES module or fetch a `.wasm`,
+/// and neither can one served without the right media type. The import is
+/// therefore in a `try`, and what a reader gets is the browser's own error in
+/// the status line rather than a validate button that silently does nothing.
+const DEMO_SCRIPT: &str = r#"
+const panel = document.getElementById("demo");
+const status = document.getElementById("demo-status");
+const ui = document.getElementById("demo-ui");
+
+function say(text) {
+  // textContent, never innerHTML: see this constant's documentation.
+  status.textContent = text;
+}
+
+try {
+  const wasm = await import(panel.dataset.module);
+  await wasm.default();
+
+  const specs = document.getElementById("demo-spec");
+  for (const id of wasm.reachableSpecIds()) {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = id;
+    specs.append(option);
+  }
+
+  // The panic contract, in the module's own words rather than this page's.
+  const panic = document.getElementById("demo-panic");
+  const sentence = document.createElement("span");
+  sentence.textContent = " " + wasm.panicContract();
+  panic.append(sentence);
+
+  const document_field = document.getElementById("demo-document");
+  const verdict = document.getElementById("demo-verdict");
+  const findings = document.getElementById("demo-findings");
+  const provenance = document.getElementById("demo-provenance");
+
+  function render(report) {
+    findings.replaceChildren();
+    const counts = report.document;
+    verdict.hidden = false;
+    verdict.className = "verdict verdict-" + (counts.worst_severity || "none");
+    verdict.textContent = counts.diagnostics === 0
+      ? "no findings"
+      : counts.error + " error(s), " + counts.warning + " warning(s), " + counts.info + " note(s)";
+
+    for (const finding of report.diagnostics) {
+      const item = document.createElement("li");
+      item.className = "finding finding-" + finding.severity;
+
+      const code = document.createElement("code");
+      code.textContent = finding.code;
+      item.append(code);
+
+      const message = document.createElement("span");
+      message.className = "finding-message";
+      message.textContent = " " + finding.message;
+      item.append(message);
+
+      if (finding.location && finding.location.pointer) {
+        const where = document.createElement("code");
+        where.className = "finding-where";
+        where.textContent = finding.location.pointer;
+        item.append(" ", where);
+      }
+
+      if (finding.help) {
+        const help = document.createElement("p");
+        help.className = "finding-help";
+        help.textContent = finding.help;
+        item.append(help);
+      }
+
+      findings.append(item);
+    }
+  }
+
+  document.getElementById("demo-run").addEventListener("click", function () {
+    let validator = null;
+    try {
+      validator = new wasm.ConformValidator(specs.value);
+      provenance.textContent = validator.provenance;
+      render(JSON.parse(validator.validate("pasted-document", document_field.value)));
+      say("Validated in this tab, against the schema compiled into the module.");
+    } catch (error) {
+      // Either a refusal — an unknown spec id, a schema that failed its
+      // digest — or a trap, which is fatal to the instance whatever this
+      // catch does with it. Both are shown; neither is treated as a verdict.
+      verdict.hidden = true;
+      findings.replaceChildren();
+      say("The validator could not produce a report: " + error);
+    } finally {
+      if (validator) { validator.free(); }
+    }
+  });
+
+  ui.hidden = false;
+  say("Validator " + wasm.conformVersion() + " loaded. Paste a contract and press Validate.");
+} catch (error) {
+  // A page opened from file://, a host serving the wrong media type, a build
+  // that wrote a truncated module: all of them land here, and all of them are
+  // shown rather than swallowed.
+  say("The validator could not be loaded, so nothing on this panel can validate anything: "
+      + error);
+}
+"#;
+
 const STYLESHEET: &str = r#"
 :root {
   --bg: #fbfbfa; --fg: #16161d; --muted: #5d5d6b; --rule: #dcdcd6;
@@ -831,6 +1102,34 @@ thead th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em
 .filter { display: flex; align-items: center; gap: 0.75rem; }
 .filter input { flex: 1; max-width: 26rem; padding: 0.5rem 0.75rem; font: inherit; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); color: var(--fg); }
 .not-wired { background: var(--absent-bg); border-left: 3px solid var(--absent); padding: 1rem 1.25rem; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.demo-controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin: 1rem 0 0.5rem; }
+.demo-controls select, .demo-controls button {
+  font: inherit; padding: 0.4rem 0.7rem; border: 1px solid var(--rule);
+  border-radius: 6px; background: var(--card); color: var(--fg);
+}
+.demo-controls button { cursor: pointer; border-color: var(--accent); color: var(--accent); }
+#demo-document {
+  width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88rem; line-height: 1.5; padding: 0.75rem; border: 1px solid var(--rule);
+  border-radius: 6px; background: var(--code-bg); color: var(--fg); resize: vertical;
+}
+.verdict { margin: 0.75rem 0; font-weight: 600; }
+.verdict-error { color: var(--bad); }
+.verdict-warning { color: var(--unknown); }
+.verdict-info, .verdict-none { color: var(--ok); }
+.findings { list-style: none; margin: 0.5rem 0; padding: 0; }
+.finding { border-left: 3px solid var(--rule); padding: 0.4rem 0 0.4rem 0.75rem; margin: 0.4rem 0; }
+.finding-error { border-left-color: var(--bad); }
+.finding-warning { border-left-color: var(--unknown); }
+.finding-info { border-left-color: var(--ok); }
+.finding-message { overflow-wrap: anywhere; }
+.finding-where { font-size: 0.8rem; color: var(--muted); }
+.finding-help { margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--muted); }
+.provenance { font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
 .evidence th[scope="row"] { white-space: nowrap; padding-right: 1.25rem; }
 .evidence th[scope="row"] code { font-size: 0.8rem; }
 .not-a-link { border: 1px dashed var(--absent); }
