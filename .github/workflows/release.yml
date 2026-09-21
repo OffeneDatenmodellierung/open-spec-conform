@@ -64,8 +64,15 @@ on:
 permissions:
   contents: read
 
+# `RUSTFLAGS` matches .github/workflows/ci.yml deliberately. Without it the
+# release gate was the *weaker* of the two: this workspace sets
+# `missing_docs = "warn"` (Cargo.toml), so a crate could arrive at
+# `cargo publish` carrying lints that a pull request against `main` would have
+# been refused for — and publishing is the one action here that cannot be
+# taken back. The gate that gets the last word should not be the lenient one.
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
 
 jobs:
   # Everything that decides whether this tree is fit to publish. `publish`
