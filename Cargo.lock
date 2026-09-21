@@ -314,6 +314,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "conform-ffi"
+version = "0.1.0"
+dependencies = [
+ "conform-core",
+ "conform-odcs",
+ "conform-odps",
+ "conform-registry",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "conform-lexicon"
 version = "0.1.0"
 dependencies = [
@@ -363,6 +375,17 @@ dependencies = [
  "conform-core",
  "serde",
  "sha2 0.11.0",
+ "toml",
+]
+
+[[package]]
+name = "conform-web"
+version = "0.1.0"
+dependencies = [
+ "conform-cli",
+ "conform-core",
+ "conform-registry",
+ "serde",
  "toml",
 ]
 

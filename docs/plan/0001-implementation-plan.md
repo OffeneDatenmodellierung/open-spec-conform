@@ -628,6 +628,112 @@ bearing for the SPA demo*, which is the strongest justification for building it.
 `wasm-bindgen`) are heavy and MUST NOT leak into the harness's tree — the exact
 failure mode NFR-001 was written to prevent.
 
+### 5.4 Correction — the ABI as built
+
+§5.1's C sketch above was written before the crate existed and is **wrong about
+the signatures**, though right about everything it was actually arguing for: the
+JSON boundary, the opaque handle, the `catch_unwind` discipline and the `Send`
+but not `Sync` rule all survived intact. The sketch is left in place because the
+reasoning around it is still the reasoning; this section records what was
+actually shipped in Phase 6 and why each difference exists. A plan whose code
+sample no longer compiles is a plan people stop reading.
+
+```c
+const char*        conform_version(void);
+ConformValidator*  conform_validator_new(const char *spec_id,
+                                         const char *registry_path);
+enum ConformStatus conform_validate(ConformValidator *validator,
+                                    const char *document_id,
+                                    const uint8_t *document, size_t document_len,
+                                    char **out_json, size_t *out_len);
+const char*        conform_last_error(void);
+void               conform_string_free(char *text);
+void               conform_validator_free(ConformValidator *validator);
+enum ConformStatus conform_self_test_panic(void);
+```
+
+**Bytes, not a path.** The sketch's `conform_validate` took a
+`const char* document_path`. An embedder rarely has one: the document is in a
+request body, an editor buffer, a socket, a database column. A path-taking
+boundary makes every such caller write a temporary file and clean it up, to be
+read straight back by a library in the same process. The boundary takes a
+pointer and a length; a caller who *does* have a path reads the file, which is
+the easy direction.
+
+**The handle is per specification, not per registry.** The sketch's
+`conform_ctx` held a registry and took a `spec_id` on every call. The expensive
+thing here is compiling a JSON Schema, so that context would have to either
+recompile per document or cache invisibly, and the provenance check — the
+re-hash of the vendored bytes against `specs.toml` — would happen somewhere the
+caller could not see. Binding the schema to the handle makes both explicit:
+`conform_validator_new` is where the registry is read, where the digest is
+verified, and where a drifted schema is refused. What comes back is a validator
+that has already earned the right to issue verdicts.
+
+**`conform_last_error` takes no argument.** It could not take a context: the
+call most likely to fail is the one that *creates* the handle, and it has no
+handle to leave a message on. The slot is thread-local, with `strerror`'s
+lifetime contract, which also means two threads failing at once do not overwrite
+each other's explanation.
+
+**The return type is an enum, not an `int`.** `ConformStatus` is `#[repr(i32)]`
+and cbindgen emits it with its values, so a C caller switches on names. `0` is
+success and nothing else is, so a binding that does not recognise a future code
+still gets the question right.
+
+**Two entry points the sketch did not have.** `conform_version()` reports the
+library's release. `conform_self_test_panic()` panics on purpose, catches it,
+and returns `CONFORM_STATUS_PANIC` — because the panic discipline has a
+prerequisite the linker does not check: a `panic = "abort"` build has no
+unwinding to catch, and `catch_unwind` cannot help. A binding calls it once at
+start-up; a process that dies there has linked a build in which no entry point
+is safe to call from C. Two compile-time constants come with them,
+`CONFORM_ABI_VERSION` and `CONFORM_SCHEMA_VERSION`, because "can I link this",
+"which release is this" and "can I parse this report" are three questions and
+the sketch had a number for none of them.
+
+**`okf` is not reachable across this boundary.** An OKF bundle is a directory of
+cross-referencing files and `conform_okf::load` takes a filesystem root; a
+bytes-in boundary has nothing to hand it. Inventing an archive format for a
+directory is a much larger decision than an FFI should make on its own, so
+asking for `okf` fails with a message saying exactly that, rather than returning
+an empty report. `odcs` and `odps` are reachable. If the SPA's WASM demo (§6)
+needs bundles, that is the phase where the encoding question gets answered
+properly.
+
+**cbindgen is outside the workspace.** §5.3 says the FFI crate's build
+dependencies must not leak into the tree, and the licence gate agreed more
+forcefully than expected: `cbindgen` is MPL-2.0 and `deny.toml` allows
+permissive licences only, so `cargo deny --all-features check` rejects it as a
+dependency of `conform-ffi` however optional the feature. The generator
+therefore lives in `tools/headergen`, its own cargo root, exactly as
+`tools/oracle` does — and the header it produces is committed, with a test that
+regenerates and compares. `deny.toml` was not touched.
+
+**On §7.2's "valgrind/ASan clean".** Those are two claims about two tools with
+two availabilities. valgrind is not packaged for Apple silicon, so on the
+machine Phase 6 was written on it could not be run at all; AddressSanitizer
+could, and was clean, but LeakSanitizer is inactive on that platform — a
+deliberate leak goes unreported there even with `detect_leaks=1`. So a macOS
+developer gets the invalid-access half and not the unreleased-memory half.
+`tools/sanitise/run.sh` runs what is present, builds two programs that are
+*supposed* to fail so that a clean run cannot be a checker that silently did not
+run, and exits non-zero if nothing ran. Both arms have since been run on Linux —
+valgrind clean, ASan clean, both controls caught — and both halves of the
+criterion are now met. See `tools/sanitise/README.md` for what was measured on
+which host, and for the two defects the first version of that harness had.
+
+**On the panic net, and the one place it does not exist.** §5.1's "a panic
+becomes an error code, never an unwind across the FFI boundary" holds only on a
+target that unwinds. Phase 7 built `conform-ffi` for `wasm32-unknown-unknown`
+and called it from Node: `conform_version()` returned `"0.1.0"`, so the ABI is
+sound there, and `conform_self_test_panic()` trapped with `unreachable`, because
+that target is `panic = "abort"` and there was nothing to catch. That is the
+self-test doing exactly its job — it fired on the first real target and stopped a
+demo shipping on an assumption that was false there. Phase 7 must therefore treat
+a panic in the WASM binding as fatal to the instance and design around it, rather
+than inheriting a guarantee the C build has and it does not.
+
 ---
 
 ## 6. Single-page app
@@ -678,6 +784,152 @@ file is a legitimate alternative and the plan survives the swap.
 /docs/adopting        Implementing Validator for a new format (SC-004)
 /docs/cli             conform CLI + TUI reference, --json envelope schema
 ```
+
+### 6.4 Correction — the SPA as built, and the WASM question resolved
+
+§6.2 recommended Astro or Vite, and §6.3 sketched six routes. Phase 7 built
+neither, and this section records what was shipped and why each difference
+exists — as §5.4 does for the FFI. The plan's *reasoning* survives intact; its
+stack recommendation did not, and §6.2 flagged itself as an open decision
+(OQ-104), so this resolves it.
+
+**One page, not six routes.** The request this phase was built from asks for "a
+single page app that describes the tool, [the] crates and the specs". `/specs`,
+`/specs/:id`, `/docs/adopting` and `/docs/cli` are four routes over content that
+fits comfortably in four sections of one document, and splitting them would buy
+a router and cost a reader the ability to search the whole catalogue with
+`Ctrl-F`. The page is one self-contained HTML file — inline stylesheet, inline
+script, no fetched asset — so it renders identically from `file://`, from a
+static host and from an archive, and a test can assert on exactly the bytes a
+reader will see.
+
+**A Rust generator, not Astro or Vite.** §6.2's deciding argument was that the
+catalogue must be generated from `specs.toml` rather than hand-typed, and that
+this is awkward in Hugo. It is equally awkward in Astro — the registry is TOML
+read by a Rust crate that re-hashes every artefact it describes — and the house
+precedent already solves it: `roteiro/website/build.sh` runs its own
+repository's Rust binary and writes `website/dist`. `conform-web` does the same.
+The consequence worth stating is that **no node, no npm and no bundler appear
+anywhere in this repository**, and `cargo test --workspace` needs none of them.
+
+**The "zero hand-typed URLs" claim is proved, not asserted.** Two tests, neither
+of which can pass vacuously. `the_page_is_a_function_of_the_registry.rs` renders
+the page from a registry of entirely fabricated values and requires that the
+fabricated values appear and no real one does — anything transcribed into the
+source survives that substitution and is caught.
+`no_spec_facts_are_written_in_the_source.rs` scans the crate's own source for
+the registry's URLs, digests, pins and names, and proves the scanner works by
+planting a real URL and requiring it to be found. It found one on its first run:
+a real specification name used as a sample string in a unit test. The sample was
+changed rather than the rule.
+
+---
+
+#### The WASM/filesystem problem, resolved with evidence
+
+§5.2 promised a WASM binding and called it "load bearing for the SPA demo".
+Phase 6 then shipped a constructor that cannot work in a browser:
+
+```c
+ConformValidator* conform_validator_new(const char *spec_id,
+                                        const char *registry_path);
+```
+
+A browser has no filesystem. This was flagged in Phase 6 as an open question for
+Phase 7. It is answered here **by building and running the artefact**, not by
+reasoning about it.
+
+What was done: `wasm32-unknown-unknown` was installed, `conform-ffi` was built
+for it as a release `cdylib` (347,412 bytes), and the module was instantiated
+and called.
+
+| Probe | Result |
+|---|---|
+| `cargo check -p conform-odcs --target wasm32-unknown-unknown` | **compiles**, 9.47s |
+| `cargo build -p conform-ffi --target wasm32-unknown-unknown --release` | **builds**, 347 KB `.wasm` |
+| module exports | all six ABI entry points, plus `memory` |
+| `conform_version()` | returns `"0.1.0"` — **the C ABI works across the boundary** |
+| `conform_validator_new("odcs", "specs.toml")` | returns **NULL** |
+| `conform_last_error()` | `error[REG100] specs.toml: cannot read the registry: operation not supported on this platform` |
+| `conform_self_test_panic()` | **traps** with `unreachable` |
+
+Three findings, in increasing order of importance.
+
+**1. The validator stack is wasm-compatible.** `jsonschema` 0.38, `serde_norway`
+and `conform-registry` all compile to `wasm32-unknown-unknown` unmodified. The
+schema validator was the plausible blocker and it is not one.
+
+**2. The filesystem failure is real, and it is graceful.** The constructor does
+not crash, corrupt memory or return a half-built handle; it returns NULL and
+leaves an accurate explanation in the thread-local error slot, which is exactly
+what the ABI promises for a registry that will not load. The failure mode is a
+*runtime* one, though, and that is the part worth flagging: the crate **compiles
+and links cleanly for wasm** and then fails on every call. Nothing in the
+toolchain warns about it.
+
+**3. `catch_unwind` does not work on this target, and the crate's own detector
+says so.** `conform_self_test_panic` exists, in Phase 6's words, because "the
+panic discipline has a prerequisite the linker does not check: a
+`panic = "abort"` build has no unwinding to catch, and `catch_unwind` cannot
+help. A binding calls it once at start-up; a process that dies there has linked
+a build in which no entry point is safe to call from C."
+
+It dies there. `wasm32-unknown-unknown` is `panic = "abort"`, the panic becomes
+an `unreachable` trap, and the status code never comes back. Phase 6 built the
+detector and this is the first target on which it has fired — which is the
+strongest possible argument that building it was right.
+
+**The resolution: embed the registry and the schema bytes, do not take bytes in.**
+
+The two obvious options are a `wasm-bindgen` binding taking the schema bytes as
+an argument, or embedding the vendored bytes into the artefact at build time.
+**The first is wrong on the merits and must not be built.** §5.4 states what
+`conform_validator_new` is for: "where the registry is read, where the digest is
+verified, and where a drifted schema is refused. What comes back is a validator
+that has already earned the right to issue verdicts." A bytes-in constructor
+hands that decision to JavaScript. The browser would then validate against
+whatever bytes the page happened to load — a schema of unverified provenance,
+chosen by the caller, with the digest check reduced to decoration. That is
+`odps-json-schema-latest.json` reincarnated in a different runtime, and this
+project exists to prevent it.
+
+Embedding preserves the whole chain. `include_str!` the registry, `include_bytes!`
+the vendored artefacts, parse with `Registry::load_str`, and re-hash the embedded
+bytes with `conform_registry::sha256_hex` before compiling the schema. Nothing is
+trusted from the host, and the digest gate still runs. `OdcsValidator::from_schema_str`
+is already public, so no adapter needs changing. Its honest limitation should be
+recorded when it is built: because both sides are frozen into the same artefact,
+the embedded check catches a registry edited without re-hashing, and cannot catch
+drift on disk — that remains `conform registry verify`'s job in CI.
+
+A third option is worth noting because it is cheaper than it looks: the existing
+C ABI is *already* a linear-memory interface — pointers, lengths, out-parameters
+and an explicit free — so a browser can drive it with plain
+`WebAssembly.instantiate` and a `Uint8Array` view, with no `wasm-bindgen`
+dependency of our own and no `wasm-pack`. That is how the probes above were run.
+The one obstacle is that the module as built carries three unresolved
+`__wbindgen_placeholder__` imports, reaching it transitively through
+`ahash → getrandom → wasm-bindgen`; they had to be stubbed to instantiate it, and
+a shipped artefact would need either the `wasm-bindgen` CLI or a build that keeps
+that edge out.
+
+**Why the demo is not in this phase.** Not for want of time. Finding 3 is a
+blocker of the right kind: `conform-ffi`'s central promise is that nothing
+unwinds across the boundary, and on this target that promise is provably false.
+Shipping an in-browser validator whose panic net does not work — in the one crate
+built around the claim that it does — would be shipping a guarantee we know to be
+untrue. Resolving it means either building `std` with the exception-handling
+proposal, or downgrading the guarantee for this target in writing and saying so
+at the boundary. That is a `conform-ffi` decision, on `conform-ffi`'s own release
+cadence, and it deserves its own phase rather than being settled as a side effect
+of building a website.
+
+So the page says so. `conform_web::site::Demo` is a typed value rather than a
+paragraph, the only variant is `NotWired`, and it carries the evidence above.
+Wiring the demo up means producing a different variant; there is no way to edit
+the prose into claiming something untrue without the type changing under it. A
+box that pretended to validate would be worse than the sentence that says it
+cannot.
 
 ---
 

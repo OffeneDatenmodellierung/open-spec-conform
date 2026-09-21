@@ -1,0 +1,48 @@
+# NOT a workspace member, and that is the whole design — the same design, and
+# for very nearly the same reason, as `tools/oracle` next door.
+#
+# `crates/*` is the workspace; this directory is outside it and declares its
+# own empty `[workspace]` so cargo treats it as a separate root. `cargo deny`
+# resolves the workspace graph including dev-dependencies and every optional
+# feature, and `cbindgen` is MPL-2.0:
+#
+#   error[rejected]: failed to satisfy license requirements
+#   41 │ license = "MPL-2.0"
+#      │            rejected: license is not explicitly allowed
+#   ├ cbindgen v0.29.4
+#     └── conform-ffi v0.1.0
+#
+# That finding is correct. `deny.toml`'s allow-list is the house standard —
+# permissive licences only — and MPL-2.0 is copyleft, however weakly and
+# however irrelevantly for a tool that only ever reads source and writes a
+# header. Adding an exception to make a *build tool* pass a gate about
+# *shipped dependencies* would blur the distinction the gate exists to keep
+# sharp, and the plan is explicit about this one (§5.3, risk R4): cbindgen
+# MUST NOT appear in the harness's tree.
+#
+# So the generator lives here, out of the gated graph, and the header it
+# produces is committed. `crates/conform-ffi/tests/the_header_matches_the_
+# library.rs` runs this and fails if the committed copy has drifted.
+#
+# Unlike `tools/oracle`, this crate's `Cargo.lock` IS committed: it pins
+# `cbindgen`, and an unpinned generator would mean a `cbindgen` release could
+# fail the drift test without anybody changing an ABI.
+#
+#   cargo run --manifest-path tools/headergen/Cargo.toml
+#
+# See README.md in this directory.
+[workspace]
+
+[package]
+name = "conform-headergen"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Generates crates/conform-ffi/include/conform.h from the crate's source, out of the workspace's dependency graph."
+
+[dependencies]
+# `default-features = false` drops the `clap`-backed command line, which is the
+# half of cbindgen that is a binary rather than a library. What is wanted here
+# is `cbindgen::Builder`, driven by `crates/conform-ffi/cbindgen.toml`.
+cbindgen = { version = "0.29", default-features = false }
