@@ -74,6 +74,23 @@ pub const EMPTY_BODY: &str = "OKF005";
 /// §4.1: `tags` is not a list of short strings.
 pub const TAGS_SHAPE: &str = "OKF006";
 
+/// A fenced code block in the body does not parse as the language it is
+/// tagged with.
+///
+/// **Raised only by [`OkfSyntax`](crate::OkfSyntax), which exists only when the
+/// `syntax` feature is on.** The code is declared unconditionally all the same:
+/// a code is an identifier a consumer writes into a suppression list, and one
+/// that appears and disappears with a build flag is not an identifier.
+///
+/// Always *information*, never a warning, and the direction is deliberate.
+/// Only 2 of the 54 concepts in the published corpus are Attested
+/// Computations; everything else fenced in an OKF document is illustrative,
+/// and documentation is full of fragments that no parser accepts as a
+/// standalone unit. Upstream's six spurious warnings over that corpus come
+/// from treating every block as if it had to run. See
+/// [`COMPUTATION_CODE_SYNTAX`] for the block that does.
+pub const CODE_BLOCK_SYNTAX: &str = "OKF007";
+
 // ---------------------------------------------------------------------------
 // OKF1xx — trust, provenance and lifecycle (§5)
 // ---------------------------------------------------------------------------
@@ -167,6 +184,22 @@ pub const COMPUTATION_ABSENT: &str = "OKF308";
 /// §10: both a `# Computation` block and a `computation:` path, which is two
 /// copies that can disagree.
 pub const COMPUTATION_REDUNDANT_INLINE: &str = "OKF309";
+
+/// §10: the `# Computation` code block does not parse as the language it is
+/// tagged with.
+///
+/// **Raised only by [`OkfSyntax`](crate::OkfSyntax), which exists only when the
+/// `syntax` feature is on**, for the same reason [`CODE_BLOCK_SYNTAX`] is
+/// declared unconditionally.
+///
+/// A *warning* where [`CODE_BLOCK_SYNTAX`] is information, because this is the
+/// one block in an OKF document that something is expected to **execute**: §10
+/// says an Attested Computation declares a `runtime` and an `executor`, and
+/// code that does not parse cannot be run by either. It is still not an error
+/// — a bundle whose computation will not compile is a bundle with a bug in it,
+/// not a document that fails to be OKF, and [`OkfSyntax`](crate::OkfSyntax)
+/// gates on nothing in any case.
+pub const COMPUTATION_CODE_SYNTAX: &str = "OKF310";
 
 // ---------------------------------------------------------------------------
 // OKF4xx — references, and the bundle as a whole

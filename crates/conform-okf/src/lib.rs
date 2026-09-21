@@ -1,13 +1,14 @@
 //! Conformance and hygiene checking for an **Open Knowledge Format** v0.2
 //! bundle, reported as [`conform_core`] diagnostics.
 //!
-//! Two checks, deliberately two types, because they answer different
-//! questions:
+//! Two checks by default and a third on request, deliberately separate types,
+//! because they answer different questions:
 //!
-//! | Type | Asks | Gates on |
-//! |---|---|---|
-//! | [`OkfConformance`] | is this bundle *OKF*? | errors |
-//! | [`OkfHygiene`] | is this bundle *good* OKF? | nothing |
+//! | Type | Asks | Gates on | Needs |
+//! |---|---|---|---|
+//! | [`OkfConformance`] | is this bundle *OKF*? | errors | — |
+//! | [`OkfHygiene`] | is this bundle *good* OKF? | nothing | — |
+//! | `OkfSyntax` | does the code in it *parse*? | nothing | feature `syntax` |
 //!
 //! That split is not a convention this crate maintains by hand. It is
 //! [`conform_core`]'s report-versus-gate separation: both types implement
@@ -48,14 +49,34 @@
 //! faithful one: a reader of our own construction, run over our own output,
 //! can only catch a mistake we did not make twice.
 //!
-//! # Code syntax is deliberately not checked here
+//! # Code syntax is not checked by default
 //!
 //! Whether a fenced `sql` block is valid SQL says nothing about whether a
 //! bundle is valid OKF — a document full of pseudocode is perfectly
 //! conformant. Folding the two together is what made upstream's validator
 //! expensive, and it is also what makes it noisy. The two code-parsing checks
-//! are therefore **absent by design**, and their absence is the only intended
-//! behavioural difference from upstream over the published corpus.
+//! are therefore **absent by default**: with no feature enabled, this crate's
+//! dependency tree is [`conform_core`] and [`okf_core`] and stops, and their
+//! absence is the only intended behavioural difference from upstream over the
+//! published corpus.
+//!
+//! They are no longer *unavailable*, which is what this paragraph used to say.
+//! Enabling the `syntax` feature adds [`OkfSyntax`], a third [`Validator`] over
+//! the same [`Bundle`], backed by [`conform_okf_syntax`] — a crate written for
+//! exactly this job, whose every code parser is itself optional so that a
+//! consumer chooses what it is willing to compile:
+//!
+//! | Feature | Adds | Costs |
+//! |---|---|---|
+//! | `syntax` | `OkfSyntax`; JSON, YAML and shell quoting | one pure-Rust crate, no parser |
+//! | `syntax-sql` | SQL, via `sqlparser` | ~17 crates, two compiling assembly |
+//! | `syntax-grammars` | Python, JavaScript, TypeScript, Rust, Bash | tree-sitter grammars, which compile C |
+//!
+//! `syntax` changes what is *reported* and deliberately not what either of the
+//! other two checks reports: [`OkfConformance`] and [`OkfHygiene`] are
+//! byte-identical in every feature configuration, because the rules are added
+//! as a separate validator rather than folded into an existing one. See
+//! [`OkfSyntax`] for why that distinction is the one that matters.
 //!
 //! # Determinism
 //!
@@ -110,6 +131,8 @@ mod context;
 mod hygiene;
 mod index;
 mod resolve;
+#[cfg(feature = "syntax")]
+mod syntax;
 
 use std::fmt;
 use std::path::Path;
@@ -121,6 +144,19 @@ use conform_core::{
 pub use conformance::OkfConformance;
 pub use hygiene::OkfHygiene;
 pub use resolve::{bundle_relative, resolve_resource};
+#[cfg(feature = "syntax")]
+pub use syntax::OkfSyntax;
+
+/// `conform-okf-syntax`, re-exported, when the `syntax` feature is on.
+///
+/// A **public dependency** for the same reason [`okf_core`] is: a caller that
+/// summarises an [`OkfSyntax`] report has to be able to say which languages
+/// this build could actually read, and
+/// [`checkable_languages`](conform_okf_syntax::checkable_languages) is the
+/// honest answer. Making them find a matching version of a second crate to ask
+/// a question about this one's report would be a poor trade.
+#[cfg(feature = "syntax")]
+pub use conform_okf_syntax;
 
 /// `okf-core`, re-exported. It is a **public dependency**: [`Bundle`] is the
 /// document type both validators here take, so a consumer cannot use this

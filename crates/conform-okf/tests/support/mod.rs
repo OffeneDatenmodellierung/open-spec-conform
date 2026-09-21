@@ -9,6 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
+use conform_core::ConformanceReport;
 use conform_okf::BundleReport;
 
 /// The directory holding the vendored upstream bundles.
@@ -28,8 +29,17 @@ pub fn fixture(bundle: &str) -> PathBuf {
 /// wrong document, or in the wrong order, is a defect that a per-field
 /// assertion over a filtered subset would not see.
 pub fn render(report: &BundleReport) -> String {
+    render_report(report.report())
+}
+
+/// The same rendering, for a check that returns a bare report rather than a
+/// [`BundleReport`].
+///
+/// One renderer and not two: the pinned expectations in these files are
+/// compared as text, so two spellings of "a diagnostic as a line" would make
+/// two test files disagree about what they are pinning.
+pub fn render_report(report: &ConformanceReport) -> String {
     report
-        .report()
         .iter()
         .map(|d| {
             format!(

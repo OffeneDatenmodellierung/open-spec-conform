@@ -26,8 +26,48 @@ authors.workspace      = true
 default = []
 # Serialization only. Enabling this feature MUST NOT change which diagnostics
 # are produced or whether a report gates — the rule `conform-core` states and
-# this crate inherits, because every rule below is feature-unconditional.
+# this crate inherits, because no rule reachable from `OkfConformance` or
+# `OkfHygiene` is feature-conditional.
+#
+# The `syntax` features below are not a counter-example and the difference is
+# worth stating precisely: they do not make an existing rule conditional, they
+# add a third `Validator` that did not exist. Neither of the other two says
+# anything different with them on.
 serde = ["dep:serde", "conform-core/serde"]
+
+# Code syntax checking: adds `OkfSyntax`, and nothing else.
+#
+# **Off by default, and that is a supply-chain decision rather than a taste
+# one.** With no feature named here, this crate's dependency tree is
+# `conform-core` and `okf-core` and stops — two crates, zero transitive
+# dependencies between them — and `cargo tree -p conform-core` is still a single
+# node. Every feature below is additive to that and nothing below changes it.
+#
+# Unlike `serde` above, these features **do** change which diagnostics are
+# produced: that is what they are for. They do it by adding a third
+# [`Validator`] rather than by changing what the other two say, so
+# `OkfConformance` and `OkfHygiene` are byte-identical in every configuration
+# — see `src/syntax.rs` for why that distinction is the one that matters, and
+# `tests/the_syntax_feature_adds_a_check_and_changes_no_other.rs` for the
+# assertion.
+#
+# `syntax` alone is deliberately the *cheap* one. `conform-okf-syntax` is taken
+# with `default-features = false`, so it brings no third-party parser at all:
+# its core is pure Rust, its `okf-core` is the one this crate already has, and
+# `serde_json` is already in this workspace's lockfile. That is enough to check
+# JSON, YAML and shell quoting. A consumer who wants a language parser names it,
+# and pays for it, one feature at a time.
+syntax = ["dep:conform-okf-syntax"]
+
+# SQL, via `sqlparser`. ~17 crates, two of which (`stacker`, `psm`) compile
+# assembly — and the one worth having, because SQL is 81 of the 82 tagged code
+# blocks in the published OKF corpus.
+syntax-sql = ["syntax", "conform-okf-syntax/sql"]
+
+# Python, JavaScript, TypeScript, Rust and Bash, via tree-sitter grammars —
+# which compile C. Zero of the 82 tagged blocks in the published corpus are any
+# of these, so this is for bundles that are not the published ones.
+syntax-grammars = ["syntax", "conform-okf-syntax/grammars"]
 
 [dependencies]
 # The shared vocabulary. A finding here is the same `Diagnostic` a reader of
@@ -47,6 +87,17 @@ conform-core = { path = "../conform-core", version = "0.1.0" }
 # both counts. See the crate documentation for what that costs and why the
 # structural half is the half that is about OKF.
 okf-core = "0.2.7"
+
+# The code-parsing half, optional. `default-features = false` so that turning
+# `syntax` on costs one pure-Rust crate and no parser; the `syntax-sql` and
+# `syntax-grammars` features above are what add a parser, by name.
+#
+# This is the crate that closes the gap this one documents about itself. It was
+# written for exactly this job — as `rto-okf-syntax`, whose own manifest said it
+# was "written to be given away" — and is ported here under
+# `docs/findings/0003-dependency-direction.md`, which settles that this
+# repository is the upstream.
+conform-okf-syntax = { path = "../conform-okf-syntax", version = "0.1.0", default-features = false, optional = true }
 
 # Serialization of this crate's own report types, behind the same off-by-default
 # feature `conform-core` uses and under the same rule: enabling it MUST NOT

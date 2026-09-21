@@ -423,6 +423,7 @@ name = "conform-okf"
 version = "0.1.0"
 dependencies = [
  "conform-core",
+ "conform-okf-syntax",
  "conform-registry",
  "okf-core",
  "serde",
