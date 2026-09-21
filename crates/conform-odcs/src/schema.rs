@@ -201,3 +201,59 @@ pub(crate) fn validated_against(
 fn truncate(value: usize) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::compile;
+
+    /// A `$ref` to an `https://` URL must not become a network fetch.
+    ///
+    /// This is the assertion behind `default-features = false` in this crate's
+    /// manifest, and it is worth a test rather than a comment because the
+    /// property is invisible at the call site: nothing in [`compile`] mentions
+    /// the network, so nothing in [`compile`] would look wrong if a future
+    /// version of `jsonschema` started resolving remote references by default.
+    ///
+    /// Why it matters here specifically. This crate validates documents against
+    /// schema bytes whose SHA-256 is pinned in `specs.toml` and checked before
+    /// use. A schema that could pull part of itself over the network would make
+    /// that pin describe only the part that happened to be local, and — because
+    /// the URL comes from the schema rather than from us — would let the
+    /// document under test steer validation at an address of its choosing. The
+    /// digest would still verify. It would just no longer mean anything.
+    ///
+    /// The host is `example.com`, which is reachable. So `Err` is evidence: had
+    /// a retriever been compiled in, this would have resolved rather than
+    /// refused.
+    #[test]
+    fn a_remote_ref_is_refused_rather_than_fetched() {
+        let schema = json!({
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+            "properties": {
+                "anything": { "$ref": "https://example.com/never-fetched.json" }
+            }
+        });
+
+        // `let ... else` rather than `expect_err`: the `Ok` type here is
+        // `jsonschema::Validator`, which is not `Debug`, so the combinators
+        // that would unwrap this cannot be named.
+        let Err(error) = compile(&schema) else {
+            panic!("a schema with an unresolvable remote $ref must not compile");
+        };
+
+        let message = error.to_string();
+        assert!(
+            message.contains("https://example.com/never-fetched.json"),
+            "the refusal should name the reference it would not follow, so a reader can see \
+             which one: {message}"
+        );
+        assert!(
+            message.contains("resolve-http"),
+            "the refusal should say retrieval is switched off rather than merely that the \
+             reference is absent, so this test fails loudly if the reason ever changes from \
+             \"no retriever\" to \"fetch failed\": {message}"
+        );
+    }
+}
