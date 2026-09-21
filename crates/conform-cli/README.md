@@ -1,8 +1,14 @@
 # conform-cli
 
-The `conform` console: a terminal UI for navigating and verifying the
-specifications this repository conforms to, and a versioned JSON report for
-everything that is not a terminal.
+Check data-specification documents — Open Data Contract Standard, Open Data
+Product Standard, Open Data Contract Lexicon, Open Knowledge Format — against
+the real upstream schemas, and get **every** problem with a stable code, a
+location and a severity, rather than the first one as a string.
+
+```console
+$ cargo install conform-cli
+$ conform validate contract.yaml --registry path/to/specs.toml
+```
 
 ```
 conform                          # the console: specs → documents → diagnostic detail
@@ -15,6 +21,82 @@ conform registry verify          # re-hash the vendored bytes against specs.toml
 
 `--json` works on any of them. `--spec <id>` restricts any of them to one
 catalogued specification.
+
+## You need a registry, and the binary does not carry one
+
+**Read this before the first run.** `conform` will not validate anything until
+it can find a `specs.toml` — the catalogue recording, for each standard, which
+upstream it came from, which immutable ref it is pinned to, and the SHA-256 of
+the vendored schema. It looks for one in the current directory and every
+directory above it, and `--registry <path>` names one directly.
+
+Installing from crates.io gives you the binary and not the catalogue, so a
+first run in a fresh directory looks like this:
+
+```
+$ conform validate contract.yaml
+✗ specs.toml
+  error CLI100 at specs.toml
+      no `specs.toml` in /home/you/project or any directory above it
+      help: run from inside a repository that has one, or pass `--registry <path>`
+            — without a registry nothing can say where a vendored specification came from
+
+exit:  2 — the run could not be performed, so nothing here is a verdict on any document
+```
+
+That is deliberate rather than an oversight, and it is the same rule every
+crate in this family follows: **a verdict issued against an unverified schema
+is not a conformance verdict.** A binary carrying its own silent copy of a
+schema is the artefact this project was built in response to — see
+`conform-registry` — so `conform` refuses to invent one.
+
+To get a registry and the schemas it points at, clone
+[the repository](https://github.com/OffeneDatenmodellierung/open-spec-conform)
+and point `--registry` at its `specs.toml`. Then every report carries the
+provenance with it:
+
+```
+info ODCS904 at contract.yaml
+    validated against odcs@3.1.0; bytes at `schemas/odcs-json-schema-v3.1.0.json`
+    verified against the digest `specs.toml` records for upstream pin `v3.1.0`
+```
+
+## A worked example
+
+```console
+$ conform validate contract.yaml --registry ../open-spec-conform/specs.toml
+```
+
+```
+conform 0.1.0 — validate
+registry: ../open-spec-conform/specs.toml
+
+specs
+  ✓ odcs   3.1.0    bytes matched
+      pinned   v3.1.0
+      upstream …the canonical URL, read from the registry rather than typed here
+  …
+
+⚠ contract.yaml  (odcs)
+  warning ODCS201 at contract.yaml (/schema)
+      contract catalogues no schema objects
+      help: add a `schema` entry describing the dataset's shape — a contract that
+            does not say what the data looks like cannot be checked against the data
+      spec: odcs@3.1.0
+  warning ODCS203 at contract.yaml (/team)
+      contract names no owning team
+      help: add a `team`, so there is somebody to ask when this contract is wrong
+      spec: odcs@3.1.0
+
+found: 0 error(s), 5 warning(s), 1 info across 1 document(s)
+gate:  none — reporting only, so this run does not fail on anything it found
+exit:  0
+```
+
+Five findings from one pass, each with a code you can suppress or search for,
+the JSON pointer it applies to, and the clause of the standard behind it. Add
+`--check` to make errors fail the run; add `--json` for the versioned envelope.
+The rest of this file is why it behaves that way.
 
 ## Reporting and gating are separate decisions
 

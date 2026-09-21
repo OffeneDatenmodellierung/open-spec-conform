@@ -6,7 +6,7 @@ Layout: article
 
 type: runbook
 status: Draft
-version: "0.1"
+version: "0.2"
 last-modified: 2026-09-21
 ---
 
@@ -14,7 +14,7 @@ last-modified: 2026-09-21
 
 ## The one fact everything here follows from
 
-**A published version is permanent.** `cargo yank` marks a version as
+**A published version is permanent.** `cargo yank` marks a version
 un-resolvable for new dependants; it does not delete it, and it does not free
 the number. Every crate in this family sits at `0.1.0`. If a broken `0.1.0`
 goes out, there is no second `0.1.0` — the next release is `0.1.1`, and the
@@ -24,209 +24,308 @@ That is why `.github/workflows/release.yml` is `workflow_dispatch` only, why
 its dry-run input defaults to *true*, and why a real upload needs the word
 `publish` typed into a second box. Merging to `main` publishes nothing.
 
+A second fact, learned the hard way from a dependency and worth stating before
+anything else: **a fix that is merged but not released does not exist for your
+consumers.** See [What the registry says, not what the source says]
+(#what-the-registry-says-not-what-the-source-says) below.
+
+## `conform-cli` is the point
+
+Twelve of the thirteen crates here are components. `conform-cli` is the
+artefact this project exists to deliver: the `conform` binary a person installs
+to check a data contract. It is also the crate that publishes **last**, because
+it depends on nearly everything else.
+
+Those two facts together are the risk in this runbook. If a release sequence
+fails part way, **the flagship is the crate that does not make it** — the
+components go out and the thing anybody actually wanted does not. Plan the
+sequence so that the last step is the one you are most confident about, and do
+not start a release you do not intend to finish.
+
+`cargo install conform-cli` installs a binary named `conform`. That works and
+needs no change: the crate name is `conform-cli`, and only the `[[bin]]` target
+is called `conform`. The bare name `conform` on crates.io is taken by an
+abandoned 2018 macro crate and is not worth pursuing.
+
+> **Option, not a recommendation.** `open-spec-conform` is free on crates.io.
+> If matching the repository name is worth more for discoverability than
+> `conform-cli`'s directness, that name is available — but it is a decision
+> about product naming, not about packaging, and nothing here depends on it.
+
 ## What is published, and what is not
 
-Eight of the nine workspace members go to crates.io:
+Thirteen workspace members; twelve go to crates.io.
 
 | Crate | Published | Why |
 | --- | --- | --- |
-| `conform-core` | yes | The vocabulary every other crate speaks. |
+| `conform-core` | yes | The vocabulary every other crate speaks. Zero non-optional dependencies. |
 | `conform-registry` | yes | Provenance for vendored artefacts. |
-| `conform-odcs` | yes | ODCS adapter. |
-| `conform-odps` | yes | ODPS adapter. |
-| `conform-okf` | yes | OKF adapter. |
-| `conform-lexicon` | yes | ODCL adapter. |
+| `conform-odcs` | yes | ODCS conformance adapter. |
+| `conform-odps` | yes | ODPS conformance adapter. |
+| `conform-okf` | yes | OKF conformance adapter. |
+| `conform-lexicon` | yes | ODCL conformance adapter. |
+| `conform-model-odcs` | yes | Typed ODCS model. No internal dependencies. |
+| `conform-model-odps` | yes | Typed ODPS model. No internal dependencies. |
+| `conform-model-cads` | yes | Typed CADS model. No internal dependencies. |
+| `conform-model-dbmv` | yes | Typed DBMV model. No internal dependencies. |
 | `conform-ffi` | yes | C ABI, and the `wasm` binding. |
-| `conform-cli` | yes | The `conform` binary, and the model the site reuses. |
-| `conform-web` | **no** | `publish = false` in its manifest. It generates the site; the artefact is an HTML file, and nothing depends on the crate. |
+| **`conform-cli`** | **yes** | **The flagship.** The `conform` binary. |
+| `conform-web` | **no** | `publish = false`. It generates the catalogue site; the artefact is an HTML file and nothing depends on the crate. |
 
-`conform-web` carrying `publish = false` is why the release workflow refuses it
-by name rather than silently skipping it.
+## The order is computed, not written down
 
-## The order
+A crate cannot be published until every crate it depends on — **including
+through `[dev-dependencies]`** — is already on crates.io, because
+`cargo publish` runs a verification build of the extracted tarball and that
+build resolves path dependencies from the registry, not from this workspace.
 
-The crates form a DAG and the registry enforces it: **a crate cannot be
-published until every crate it depends on — including through
-`[dev-dependencies]` — is already on crates.io**, because `cargo publish` runs
-a verification build of the extracted tarball and that build resolves path
-dependencies from the registry, not from this workspace.
+`tools/publish-order.py` derives a safe sequence from `cargo metadata` and
+drops anything carrying `publish = false`. `release.yml` calls it. **Do not
+transcribe its output into a workflow or a script** — this workspace went from
+nine crates to thirteen between two commits, and a list written down would have
+gone on publishing the first nine while looking complete.
 
-```
-conform-core
-  └── conform-registry
-        ├── conform-odcs ─┐
-        ├── conform-odps ─┤
-        ├── conform-okf   │   (dev-depends on conform-registry)
-        └── conform-lexicon
-                          ├── conform-ffi   (core, registry, odcs, odps; dev: odcs)
-                          └── conform-cli   (core, registry, and all four adapters)
+```console
+$ ./tools/publish-order.py
+conform-core conform-model-cads conform-model-dbmv conform-model-odcs
+conform-model-odps conform-registry conform-lexicon conform-odcs conform-odps
+conform-okf conform-cli conform-ffi
 ```
 
-The sequence the workflow uses, which is a safe linearisation of that graph:
-
-1. `conform-core`
-2. `conform-registry`
-3. `conform-odcs`
-4. `conform-odps`
-5. `conform-okf`
-6. `conform-lexicon`
-7. `conform-ffi`
-8. `conform-cli`
-
-Steps 3–6 are independent of each other and may go in any order among
-themselves. Step 7 needs only 1–4; it is placed after 6 so that a single pass
-down the list is always correct.
+That is what it prints today, shown so a reader knows the shape — not an
+assertion that it will not change. Crates within a tier are independent of each
+other; the four `conform-model-*` crates have no internal dependencies at all
+and could go first, last, or any time.
 
 ## What can be verified today, and what cannot
 
-As of 2026-09-21, with nothing yet on crates.io:
+With nothing yet on crates.io:
 
-- `cargo package -p conform-core` — **passes**, including its verification
-  build.
-- `cargo package` for the other eight — **fails**, every one with
-  `no matching package named 'conform-core' found / location searched:
-  crates.io index`.
+- `cargo package -p conform-core` — **passes**, verification build included.
+- `cargo package` for the other twelve — **fails**, every one with
+  `no matching package named '…' found / location searched: crates.io index`.
 
-That failure is the ordering rule above showing through. It is **not** a defect
-in those crates and it is not something to work around; it disappears one crate
-at a time as the sequence proceeds.
+That is the ordering rule showing through. It is **not** a defect in those
+crates, and it disappears one crate at a time as the sequence proceeds. It does
+mean **there is no way to dry-run the whole workspace before the first
+release**, and no tool changes that — `release-plz release --dry-run` hits the
+same wall.
 
-So there is no way to dry-run the whole workspace before the first release.
-What *can* be checked ahead of time, and is:
+What *is* checkable ahead of time, and was:
 
-- `cargo package --list` works for all nine and shows exactly what each tarball
-  would contain.
-- Copying precisely those files into a tree that has **no repository root** —
-  no `specs.toml`, no `schemas/` — and building every target proves that no
-  crate reaches outside its own directory at build time. This is how the
-  `conform-ffi` `include_str!` defect was found and how its fix was confirmed.
+- `cargo package --list` works for all thirteen and reports exactly what each
+  tarball would hold.
+- Copying precisely those files into a tree with **no repository root** — no
+  `specs.toml`, no `schemas/` — and building every target proves no crate
+  reaches outside its own directory at build time. All thirteen build; so does
+  `conform-ffi --features wasm`. This is how the `conform-ffi` `include_str!`
+  defect was found and how its fix was confirmed, and it is worth re-running
+  whenever a crate starts embedding something.
+
+### A published crate's test suite is not expected to run standalone
+
+Running `cargo test` inside an unpacked tarball gives, today:
+
+| Crate | From its own tarball |
+| --- | --- |
+| `conform-core` | 18 pass, 0 fail |
+| `conform-model-odcs` / `-odps` / `-cads` / `-dbmv` | all pass (28 / 10 / 12 / 14) |
+| `conform-registry` | 15 pass, 11 fail |
+| `conform-odcs` / `conform-odps` | 8 pass, 14 fail each |
+| `conform-okf` | 25 pass, 3 fail |
+| `conform-lexicon` | 20 pass, 27 fail |
+| `conform-ffi` | 27 pass, 15 fail |
+| `conform-cli` | 21 pass, 28 fail |
+
+Every failure is the same one: `tests/support/mod.rs` climbs two directories to
+find the workspace root's `specs.toml`, and a tarball has no workspace root.
+
+**This does not block publishing.** `cargo publish` *builds* test targets during
+verification and never *runs* them, and the builds all succeed. What it means is
+that a consumer who unpacks a crate and runs its tests will see failures that
+say nothing about the crate. Nothing here is being hidden; it is recorded so the
+first bug report about it has an answer. Fixing it properly would mean either
+shipping a registry inside each tarball — a second copy of the vendored bytes,
+which is the defect this project exists to prevent — or teaching the helpers to
+skip when no registry is reachable, which is a change to seven crates' test code
+and not packaging work.
 
 ## The first publish, step by step
 
 The first release is the risky one, because the dry run cannot cover it.
 
-1. Make sure `main` is green: `cargo fmt --all --check`,
-   `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
-   `cargo test --workspace`, `cargo test --workspace --all-features`,
-   `cargo deny --all-features check`.
+1. Make sure `main` is green: `cargo fmt --all --check`;
+   `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+   `cargo test --workspace`; `cargo test --workspace --all-features`;
+   `cargo deny --all-features check`. The release workflow runs all of these as
+   a prerequisite anyway, and will not reach the publish step without them.
 2. Run **Release** with `crates: conform-core`, `dry_run: true`. It should
    pass. Nothing is uploaded.
 3. Run **Release** with `crates: conform-core`, `dry_run: false`,
    `confirm: publish`. `conform-core 0.1.0` is now permanent.
 4. Run **Release** with `crates: conform-registry`, `dry_run: true`. This now
    passes, because step 3 put its dependency on the registry. If it does not
-   pass, **stop** — the tree is telling you something and the next crate is
-   not ready.
+   pass, **stop** — the tree is telling you something.
 5. Repeat the dry-run-then-publish pair for each remaining crate, in the order
-   above.
+   `tools/publish-order.py` prints.
+
+The four `conform-model-*` crates depend on nothing internal, so they can be
+done at any point and are a low-risk way to exercise the workflow for real
+before the interdependent crates start.
 
 Publishing one crate per dispatch is slower than `crates: all` and is the right
 way to do it the first time: every step is preceded by a dry run that could not
-have been performed until the step before it completed.
+have been performed until the step before completed.
 
 From the second release onward, `crates: all` with `dry_run: true` is a
-meaningful whole-workspace check, because every dependency is already on the
-registry.
+meaningful whole-workspace check.
 
 ## If a publish fails part-way through
 
 This is the scenario that actually bites, so it gets a written answer.
 
 Say the sequence reaches `conform-odps` and fails. `conform-core`,
-`conform-registry` and `conform-odcs` are on crates.io at `0.1.0` and **cannot
-be withdrawn**. The workspace is half-published.
+`conform-registry` and the model crates are on crates.io at `0.1.0` and
+**cannot be withdrawn**. The workspace is half-published, and `conform-cli` —
+the one anybody wanted — is not out.
 
 **This is not an emergency, and the instinct to "undo" it is the thing to
-resist.** What is on the registry is correct — it passed its own verification
+resist.** What is on the registry is correct: it passed its own verification
 build. Nothing downstream is broken, because nothing downstream exists yet.
-
-Do this:
 
 1. **Do not yank the published crates.** Yanking `conform-core 0.1.0` would
    break `conform-registry 0.1.0`, which depends on it and is already public.
    Yank propagates outward as breakage; it does not roll anything back.
-2. **Read the actual error.** Two kinds occur here, and they want opposite
-   responses:
-   - *Transient* — a registry timeout, a rate limit, an index-propagation
-     wait that expired. Re-dispatch the workflow for the same crate. Nothing
-     needs fixing.
-   - *Real* — the verification build failed, or `cargo deny` objected, or a
+2. **Read the actual error.** Two kinds occur, wanting opposite responses:
+   - *Transient* — a registry timeout, a rate limit, an expired
+     index-propagation wait. Re-dispatch for the same crate; nothing needs
+     fixing.
+   - *Real* — the verification build failed, `cargo deny` objected, or a
      manifest is wrong. The crate is not publishable as written.
-3. **For a real failure, fix it on a branch and bump only that crate.** The
-   failing crate has never been published, so its `0.1.0` is still free — fix
-   it and publish `0.1.0` as planned. This is the common case and it costs
-   nothing.
-4. **If the fault is in an already-published crate**, its version is spent.
-   Fix it, bump that crate to `0.1.1`, publish the fix, and then update the
-   dependency requirement in the crates that had not gone out yet. Because
-   every crate here carries a literal version and depends on its siblings with
-   an explicit `version = "0.1.0"`, that edit is mechanical and local. Yank the
-   broken version *only* if it is actively harmful — and only after its
-   replacement is published, because yanking first leaves a window in which
-   the already-public dependants resolve to nothing.
-5. **Resume from where it stopped**, not from the beginning. Dispatch the
-   workflow with `crates` set to the remaining names; it will reorder them into
-   dependency order and refuse anything that is not publishable.
+3. **For a real failure, fix it and publish the same version.** The failing
+   crate has never been published, so its `0.1.0` is still free. This is the
+   common case and it costs nothing.
+4. **If the fault is in an already-published crate**, its version is spent. Fix
+   it, bump *that crate* to `0.1.1`, publish the fix, then update the
+   dependency requirement in the crates that had not gone out yet. Because every
+   crate carries a literal version and depends on its siblings with an explicit
+   `version = "0.1.0"`, that edit is mechanical and local. Yank the broken
+   version **only** if it is actively harmful, and only *after* its replacement
+   is published — yanking first leaves a window in which already-public
+   dependants resolve to nothing.
+5. **Resume from where it stopped.** Dispatch with `crates` set to the
+   remaining names; they are reordered into dependency order automatically and
+   anything unpublishable is refused by name.
 
-The thing that makes all of this recoverable is that the crates are
-independently versioned (FR-011). A workspace on one shared version would have
-to burn one number for all eight.
+What makes this recoverable is that the crates are independently versioned
+(FR-011). A workspace on one shared version would have to burn one number for
+all twelve.
+
+## What the registry says, not what the source says
+
+`data-modelling-core` is published at `2.4.0`, and **that published version
+still declares `yaml-rust ^0.4`** — confirmed against
+`crates.io/api/v1/crates/data-modelling-core/2.4.0/dependencies`, which also
+still lists `serde_yaml ^0.9`, itself unmaintained. The removal was merged into
+the SDK but the version was not bumped, so the source at `2.4.0` now differs
+from what the registry serves under `2.4.0`.
+
+Two consequences:
+
+- Anything depending on the *registry* copy still inherits RUSTSEC-2024-0320.
+  The advisory is cleared for consumers only when the SDK publishes a new
+  version. This is why `tools/oracle` cannot simply move into this workspace
+  and depend on the released crate — it is a precondition, not a preference.
+- A future `cargo publish` of `2.4.0` from that repository would be rejected
+  outright, because the version already exists.
+
+The general lesson applies to us from the moment we publish: **merged is not
+released.** A fix on `main` does nothing for anybody consuming `0.1.0`. Bump
+and publish, or the fix does not exist.
 
 ## Repository settings worth turning on
 
-The workflow references two GitHub Environments: `crates-io-dry-run` and
+`release.yml` references two GitHub Environments, `crates-io-dry-run` and
 `crates-io`. Referencing an environment that does not exist creates it
 **unprotected**, so the names alone guarantee nothing. Two settings on
-`crates-io` (Settings → Environments) turn them into a real gate:
+`crates-io` (Settings → Environments) make them a real gate:
 
-- **Required reviewers.** A real publish then waits for a human approval
+- **Required reviewers** — a real publish then waits for a human approval
   distinct from whoever pressed the button.
-- **Deployment branches: `main` only.** Without this, a release can be
-  dispatched from any branch — including one whose `release.yml` has had the
+- **Deployment branches: `main` only** — without this, a release can be
+  dispatched from any branch, including one whose `release.yml` has had the
   confirmation step edited out.
 
-`CARGO_REGISTRY_TOKEN` should be scoped as narrowly as crates.io allows: a
-publish-only token, restricted to the `conform-*` crates once they exist. It is
-bound to the single uploading step in `release.yml` and appears nowhere else.
+`CARGO_REGISTRY_TOKEN` should be as narrow as crates.io allows: publish-only,
+and scoped to the `conform-*` crates once they exist. It is bound to the single
+uploading step in `release.yml` and appears nowhere else.
+
+`ci.yml` is safe with respect to that secret: it triggers on `pull_request`,
+not `pull_request_target`, so a fork's pull request runs unprivileged and
+receives no secrets. Nothing in it references `secrets.*`.
 
 ## How this relates to `release-plz`
 
 `release-plz.toml` configures changelog generation, GitHub releases, and
-`cargo-semver-checks`. Nothing in this repository runs `release-plz` today, and
-`release.yml` deliberately does not: the first release needs an explicit,
-readable, one-crate-at-a-time sequence rather than a tool's inferred order.
+`cargo-semver-checks`. Nothing runs `release-plz` today, and `release.yml`
+deliberately does not: the first release needs an explicit, one-crate-at-a-time
+sequence with a human looking at each step.
 
-The safe way to automate the *rest* of it is a `release-plz release-pr` job —
-it opens a pull request bumping versions and writing changelogs, and publishes
-nothing. Pairing that with this workflow gives automation over version
-bookkeeping while a human still presses publish. Adding it is a separate change
-and is not done here.
+The safe way to automate the rest is a `release-plz release-pr` job — it opens
+a pull request bumping versions and writing changelogs, and **publishes
+nothing**. That pairs well with this workflow: automation over version
+bookkeeping, a human over the publish button. Adding it is a separate change.
 
-One note on `semver_check = true`: `cargo-semver-checks` compares against the
-previous version **on crates.io**. Before the first release there is no
-baseline, so it has nothing to check and does not block. It starts doing real
-work from the second release onward, which is exactly when it is wanted.
+On `semver_check = true`: `cargo-semver-checks` compares against the previous
+version **on crates.io**. Before the first release there is no baseline, so it
+has nothing to check and does not block. It starts doing real work from the
+second release onward, which is when it is wanted. The configuration is correct
+for independently versioned crates and nothing in it misorders a release.
+
+One open question for a human, deliberately not decided here: `publish = false`
+stops `conform-web` reaching crates.io, but `release-plz` will still version it,
+changelog it and tag it. If that is unwanted, a `[[package]]` block for
+`conform-web` with `release = false` turns it off. It is reasonable either way —
+the crate *is* a versioned artefact.
+
+## Manifest metadata
+
+Every publishable crate carries `description`, `readme`, `keywords` (five or
+fewer, all valid) and `categories`. All seven distinct category slugs used
+across the workspace were checked live against `crates.io/api/v1/categories`
+and all seven exist; an unknown slug is rejected at upload, so this is worth
+re-checking if one is ever added.
+
+`documentation` and `homepage` are unset everywhere, deliberately:
+
+- `documentation` — crates.io links docs.rs automatically. Setting it would add
+  a string that says what the default already says and can go stale.
+- `homepage` — there is no deployed site URL yet. `repository` already points
+  at GitHub; duplicating it into `homepage` adds noise, not information. When
+  the generated site has a public URL, that is the correct value and setting it
+  then is worthwhile.
 
 ## What the tarballs contain
 
-Two tests enforce the parts that are easy to get silently wrong, and both run
-in `cargo test --workspace` and again by name in the release gates:
+Two tests enforce the parts that are easy to get silently wrong. Both run in
+`cargo test --workspace` and again by name in the release gates, and both
+enumerate workspace members **dynamically** — when four crates arrived at once,
+both failed naming all four, without an edit.
 
 - `crates/conform-web/tests/every_crate_ships_its_licence.rs` — every member
   packages `LICENSE-MIT` and `LICENSE-APACHE`, and the bytes are the
   repository's own. Each crate directory holds symbolic links to the single
   copy at the repository root; cargo dereferences them when packaging, so the
-  tarball carries real files while the repository keeps one copy of each
-  licence.
+  tarball carries real files while the repository keeps one copy of each.
 - `crates/conform-web/tests/vendored_bytes_are_packaged_not_forked.rs` — no
   crate directory holds a *diverging* copy of `specs.toml` or of a file under
   `schemas/`. `conform-ffi` must carry those bytes inside its own directory for
-  its `wasm` feature to build once published, and it does so by symbolic link
-  for the same reason: a second copy with its own future is the defect this
-  registry exists to prevent.
+  its `wasm` feature to build once published, and does so by symbolic link for
+  the same reason: a second copy with its own future is the defect this registry
+  exists to prevent.
 
-Both tests fail on a checkout whose filesystem does not support symbolic links,
-where each link becomes a short text file holding its own path. That is
-deliberate — publishing from such a checkout would ship tarballs whose
-`LICENSE-MIT` says `../../LICENSE-MIT` and whose embedded schema is twenty
-bytes of path. **Publish from Linux or macOS.**
+Both fail on a checkout whose filesystem does not support symbolic links, where
+each link becomes a short text file holding its own path. That is deliberate —
+publishing from such a checkout would ship tarballs whose `LICENSE-MIT` reads
+`../../LICENSE-MIT` and whose embedded schema is twenty bytes of path.
+**Publish from Linux or macOS.**

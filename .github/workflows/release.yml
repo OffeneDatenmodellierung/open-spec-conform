@@ -26,8 +26,9 @@
 #
 # This workflow drives `cargo publish` directly rather than `release-plz`,
 # because the first release has to go out one crate at a time in dependency
-# order and that sequence should be readable here rather than inferred from a
-# tool's behaviour. `release-plz.toml` still governs changelog and version
+# order, and each step wants a human looking at the one before it. The order
+# itself is computed by tools/publish-order.py from `cargo metadata`, so it
+# cannot fall behind a workspace that gained four crates overnight. `release-plz.toml` still governs changelog and version
 # automation; see docs/PUBLISHING.md for how the two fit together and for the
 # recommended `release-plz release-pr` job, which opens a pull request and
 # publishes nothing.
@@ -39,8 +40,9 @@ on:
     inputs:
       crates:
         description: >-
-          Which crates to publish, space-separated, in dependency order — or
-          "all" for the full sequence. The first release must be done a few at
+          Which crates to publish, space-separated — or "all" for the full
+          sequence. Order does not matter: whatever is named is reordered into
+          dependency order, and anything not publishable is refused. The first release must be done a few at
           a time: a crate cannot be verified until everything it depends on is
           already on crates.io.
         type: string
@@ -139,34 +141,42 @@ jobs:
             exit 1
           fi
 
-      # Resolve the requested crates against the known publish order, and
-      # refuse anything that is not on it. This validates the input — again,
-      # read from the environment, never interpolated — and it is also what
-      # keeps the order in one place rather than in a dispatcher's memory.
+      # Resolve the requested crates against the publish order, and refuse
+      # anything that is not on it. The order is computed from `cargo
+      # metadata` by tools/publish-order.py, never written down here: four
+      # crates arrived in this workspace between one commit and the next, and
+      # a sequence listed in this file would have gone on publishing the
+      # others while looking complete.
       #
-      # `conform-web` is deliberately absent: it carries `publish = false`,
-      # being the generator for the site rather than a library anybody depends
-      # on.
+      # That script also drops anything carrying `publish = false` — today
+      # `conform-web`, which generates the site rather than being a library
+      # anybody depends on — so asking for one is refused by name rather than
+      # silently skipped.
+      #
+      # The dispatcher's input is read through the environment and compared as
+      # a string, never interpolated into this script, so what somebody typed
+      # is data and never syntax.
       - name: Work out the sequence
         id: plan
         env:
           REQUESTED: ${{ inputs.crates }}
         run: |
           set -euo pipefail
-          ORDER="conform-core conform-registry conform-odcs conform-odps conform-okf conform-lexicon conform-ffi conform-cli"
+          ORDER="$(./tools/publish-order.py)"
+          echo "Publishable, in dependency order: $ORDER"
 
           if [ "$REQUESTED" = "all" ]; then
             SEQUENCE="$ORDER"
           else
             SEQUENCE=""
-            # Walk the canonical order and keep what was asked for, so the
+            # Walk the computed order and keep what was asked for, so the
             # result is in dependency order however the input was spelled.
             for known in $ORDER; do
               for want in $REQUESTED; do
                 if [ "$known" = "$want" ]; then SEQUENCE="${SEQUENCE:+$SEQUENCE }$known"; fi
               done
             done
-            # Anything left unmatched is a typo or a crate that must not be
+            # Anything unmatched is a typo, or a crate that must not be
             # published, and either way this is not the moment to guess.
             for want in $REQUESTED; do
               case " $ORDER " in
