@@ -23,6 +23,28 @@
 //! are both `include_str!`, the digest gate still runs, and a caller names a
 //! spec id — never a schema.
 //!
+//! # Where the bytes come from, and why not `../../../`
+//!
+//! `include_str!` resolves relative to this file, and the obvious spelling —
+//! `../../../specs.toml` — reaches three levels up, out of this crate's
+//! directory and into the repository root. That compiles here and *only*
+//! here: a `.crate` archive contains no file from above the package root, so
+//! a published `conform-ffi` built with this feature would fail on the three
+//! `include_str!` lines below for everybody who downloaded it, while passing
+//! every check in this repository.
+//!
+//! The paths therefore go through `embedded/`, a directory in this crate
+//! holding symbolic links to the repository's single copy of each file. Cargo
+//! dereferences them when packaging, so the tarball carries the real bytes,
+//! and this repository still holds one `specs.toml` and one copy of each
+//! schema — a symbolic link cannot drift from what it points at. A *copy*
+//! here would be a second set of vendored bytes with its own future, which is
+//! `odps-json-schema-latest.json` reincarnated one directory over.
+//!
+//! It also fails loudly in the case that matters: re-vendoring a schema under
+//! a new filename leaves a dangling link, and a dangling link is a build
+//! error rather than a stale validator.
+//!
 //! # What the embedded check catches, and what it cannot
 //!
 //! It catches a registry edited without re-hashing, a schema edited without
@@ -49,19 +71,23 @@ use conform_registry::{Registry, SpecEntry, sha256_hex};
 
 use crate::engine::{Backend, BuildError, render};
 
-/// The registry, as text, exactly as it is on disk at the repository root.
+/// The registry, as text: the repository's own `specs.toml`, reached through
+/// the symbolic link in `embedded/` so that it is a file inside this package
+/// and so a file in this package's tarball. See the note above on why the
+/// obvious `../../../specs.toml` does not survive publication.
 ///
 /// `include_str!` rather than a transcription, for the reason every other
 /// crate in this family reads `specs.toml` rather than restating it: a fact
 /// about a specification that is written down twice is a fact that can be
 /// wrong in one of the two places.
-const REGISTRY_TOML: &str = include_str!("../../../specs.toml");
+const REGISTRY_TOML: &str = include_str!("../embedded/specs.toml");
 
 /// What this module names the registry in a diagnostic.
 ///
 /// The path a reader would type, not the one the compiler resolved: the
-/// `../../../` in the `include_str!` above is an artefact of where this file
-/// lives and means nothing to somebody reading an error message.
+/// `../embedded/` in the `include_str!` above is an artefact of how this crate
+/// gets the bytes into its own tarball and means nothing to somebody reading
+/// an error message.
 const REGISTRY_NAME: &str = "specs.toml";
 
 /// One vendored schema, and the registry entry it must still answer to.
@@ -92,12 +118,12 @@ pub const EMBEDDED: &[Embedded] = &[
     Embedded {
         spec_id: "odcs",
         vendored_path: "schemas/odcs-json-schema-v3.1.0.json",
-        schema: include_str!("../../../schemas/odcs-json-schema-v3.1.0.json"),
+        schema: include_str!("../embedded/schemas/odcs-json-schema-v3.1.0.json"),
     },
     Embedded {
         spec_id: "odps",
         vendored_path: "schemas/odps-json-schema-v1.0.0.json",
-        schema: include_str!("../../../schemas/odps-json-schema-v1.0.0.json"),
+        schema: include_str!("../embedded/schemas/odps-json-schema-v1.0.0.json"),
     },
 ];
 
