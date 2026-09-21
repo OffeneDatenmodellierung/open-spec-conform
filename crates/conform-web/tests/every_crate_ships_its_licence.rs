@@ -1,5 +1,5 @@
-//! Every crate in this workspace ships both licence texts inside its own
-//! published tarball.
+//! Every crate in this workspace ships, inside its own published tarball, the
+//! text of every licence the tarball is redistributed under.
 //!
 //! # The defect this exists to prevent
 //!
@@ -16,6 +16,41 @@
 //! problem, because it is the downloaded tarball, not this repository, that a
 //! consumer redistributes.
 //!
+//! # The third file, and the five crates that owe it
+//!
+//! `LICENSE-MIT` and `LICENSE-APACHE` are this workspace's own offer, and they
+//! say nothing about material this workspace did not write. Five crates here
+//! redistribute material taken from `data-modelling-sdk`, which is MIT under a
+//! *different* notice: its copyright line reads "Copyright (c) 2025 Mark
+//! Olliver", where this repository's own `LICENSE-MIT` reads "Copyright (c)
+//! 2026 Mark Olliver and the open-spec-conform contributors". MIT attaches
+//! exactly one condition — that its notice travels with every copy and
+//! substantial portion — and a notice naming a different holder and a different
+//! year is not preserved by shipping ours in its place. So the upstream one is
+//! kept verbatim at `LICENSE-MIT-upstream`, and every crate that carries the
+//! material it covers has to carry it too.
+//!
+//! Four of the five are the `conform-model-*` crates, each a port of a module
+//! from that repository's `crates/core/src/models/`. The fifth is
+//! `conform-cli`, which ships the vendored schemas alongside its embedded
+//! catalogue — and one of those schemas is `data-modelling-sdk`'s own work
+//! rather than a standards body's, which is why the registry records a licence
+//! for it at all: three of its five entries record none, because nobody
+//! upstream wrote one down.
+//!
+//! Which schema that is, and which commit its bytes were last written at, are
+//! registry facts, and this file does not transcribe registry facts — read them
+//! from `specs.toml`, for the reason
+//! `no_spec_facts_are_written_in_the_source.rs` exists to enforce.
+//!
+//! Their READMEs already told the reader that the notice was "preserved at
+//! `LICENSE-MIT-upstream` in the repository root". That sentence was true of
+//! this repository and false of every tarball built from it: a `.crate` archive
+//! holds nothing from above the package root, so the published artefact would
+//! have cited a file it did not contain, while redistributing the very material
+//! that file exists to cover. `cargo publish` cannot be undone, and this rule
+//! was written before the first upload rather than after it.
+//!
 //! # Why this is a test and not a convention
 //!
 //! A convention is a thing somebody remembers. A crate added to this workspace
@@ -28,10 +63,10 @@
 //!
 //! # The two halves, and why neither is sufficient
 //!
-//! [`every_crate_packages_both_licences`] asks cargo what would actually go
-//! into the tarball. That is the question that matters, and it is the only one
-//! that catches an `exclude` key, a `.gitignore` line, or any future change in
-//! how cargo decides what to pack.
+//! [`every_crate_packages_the_licences_it_owes`] asks cargo what would actually
+//! go into the tarball. That is the question that matters, and it is the only
+//! one that catches an `exclude` key, a `.gitignore` line, or any future change
+//! in how cargo decides what to pack.
 //!
 //! [`every_crate_licence_is_the_repository_licence`] reads the bytes and
 //! compares them to the repository's own. That catches what the listing cannot:
@@ -41,6 +76,25 @@
 //! containing the path `../../LICENSE-MIT`. Packaging that would ship a tarball
 //! whose `LICENSE-MIT` says nothing at all, and the listing check would call it
 //! green.
+//!
+//! # What [`REDISTRIBUTORS`] can and cannot catch
+//!
+//! The list of crates that owe the upstream notice is authored, not derived.
+//! The only fact the filesystem offers is whether a crate already carries the
+//! file, and a rule read from that would agree with whatever is there — it
+//! would call a missing notice correct for exactly as long as it was missing.
+//!
+//! Being authored, it is checked in both directions. A listed crate that does
+//! not package the notice fails, which is the defect above. A crate that
+//! packages it without being listed fails too, because a notice for material a
+//! crate does not carry is a false claim about that crate's provenance, and the
+//! remedy — record why it is there — is the same work either way.
+//!
+//! What no test here can catch is the third case: a crate that ports upstream
+//! material and is added to neither the list nor the tarball. Nothing in the
+//! bytes distinguishes a port from original work. That one is caught by reading
+//! the diff, and it is written down here so that a green run is not mistaken
+//! for a proof that no such crate exists.
 //!
 //! # Why symbolic links
 //!
@@ -65,6 +119,39 @@ use conform_web::manifests;
 /// The two files every crate must carry, named exactly as the repository root
 /// names them.
 const LICENCES: [&str; 2] = ["LICENSE-MIT", "LICENSE-APACHE"];
+
+/// The upstream MIT notice, named exactly as the repository root names it.
+///
+/// Carried by the crates in [`REDISTRIBUTORS`] and by no others.
+const UPSTREAM_LICENCE: &str = "LICENSE-MIT-upstream";
+
+/// Every crate that redistributes `data-modelling-sdk` material, and what each
+/// one redistributes.
+///
+/// The second field is the reason the crate is on this list. It is stored here
+/// rather than left to a README because it is what the failure message needs to
+/// say, and because the next person to change this list should not have to
+/// reconstruct the argument from four provenance sections.
+const REDISTRIBUTORS: [(&str, &str); 5] = [
+    (
+        "conform-model-cads",
+        "ports `crates/core/src/models/cads.rs`",
+    ),
+    (
+        "conform-model-dbmv",
+        "ports `crates/core/src/models/dbmv.rs`",
+    ),
+    ("conform-model-odcs", "ports `crates/core/src/models/odcs/`"),
+    (
+        "conform-model-odps",
+        "ports `crates/core/src/models/odps.rs`",
+    ),
+    (
+        "conform-cli",
+        "embeds, with its catalogue, the one vendored schema the registry records \
+         as that repository's own work",
+    ),
+];
 
 /// The repository root — the directory the licence texts live in.
 fn repository_root() -> PathBuf {
@@ -104,6 +191,14 @@ fn members() -> Vec<(String, PathBuf)> {
         .collect()
 }
 
+/// Why this crate owes the upstream MIT notice, or [`None`] if it does not.
+fn redistributes_upstream(name: &str) -> Option<&'static str> {
+    REDISTRIBUTORS
+        .into_iter()
+        .find(|(crate_name, _)| *crate_name == name)
+        .map(|(_, reason)| reason)
+}
+
 /// The names in a `cargo package --list` listing that are missing from it.
 ///
 /// A free function rather than an assertion inline, so that
@@ -116,6 +211,18 @@ fn licences_missing_from(listing: &str) -> Vec<&'static str> {
         .into_iter()
         .filter(|licence| !packaged.contains(licence))
         .collect()
+}
+
+/// Whether a `cargo package --list` listing carries the upstream MIT notice.
+///
+/// Separate from [`licences_missing_from`] because the answer is read in both
+/// directions: the crates in [`REDISTRIBUTORS`] must package it, and every other
+/// crate must not.
+fn packages_the_upstream_notice(listing: &str) -> bool {
+    listing
+        .lines()
+        .map(str::trim)
+        .any(|line| line == UPSTREAM_LICENCE)
 }
 
 /// What `cargo package --list` says would go into this crate's tarball.
@@ -154,11 +261,23 @@ fn packaged_files(package: &str) -> String {
 }
 
 #[test]
-fn every_crate_packages_both_licences() {
+fn every_crate_packages_the_licences_it_owes() {
+    let members = members();
     let mut faults = Vec::new();
 
-    for (name, _) in members() {
-        let listing = packaged_files(&name);
+    // A name in REDISTRIBUTORS that is not a member is a typo, and a typo there
+    // is a crate whose obligation silently stops being checked — the same
+    // vacuous pass the member list is read from disk to avoid.
+    for (name, _) in REDISTRIBUTORS {
+        assert!(
+            members.iter().any(|(member, _)| member == name),
+            "REDISTRIBUTORS names {name}, which is not a member of this workspace; the rule it \
+             states would never be checked against anything",
+        );
+    }
+
+    for (name, _) in &members {
+        let listing = packaged_files(name);
 
         // The listing is real output, not an empty string that would make the
         // filter below find nothing and report success. Every crate in this
@@ -176,6 +295,24 @@ fn every_crate_packages_both_licences() {
                  no copy of those terms",
             ));
         }
+
+        match (
+            redistributes_upstream(name),
+            packages_the_upstream_notice(&listing),
+        ) {
+            (Some(reason), false) => faults.push(format!(
+                "{name} would publish without {UPSTREAM_LICENCE}: it {reason} from \
+                 data-modelling-sdk, whose MIT notice names a different copyright holder and year \
+                 than this workspace's own LICENSE-MIT, so shipping ours does not preserve it",
+            )),
+            (None, true) => faults.push(format!(
+                "{name} packages {UPSTREAM_LICENCE} but is not listed in REDISTRIBUTORS; either \
+                 record there what it redistributes from data-modelling-sdk, or remove the file, \
+                 because a notice for material a crate does not carry is a false claim about that \
+                 crate's provenance",
+            )),
+            (Some(_), true) | (None, false) => {}
+        }
     }
 
     assert!(faults.is_empty(), "{}", faults.join("\n"));
@@ -184,36 +321,57 @@ fn every_crate_packages_both_licences() {
 #[test]
 fn every_crate_licence_is_the_repository_licence() {
     let root = repository_root();
+    let members = members();
     let mut faults = Vec::new();
 
-    for licence in LICENCES {
-        let canonical = fs::read(root.join(licence)).unwrap_or_else(|error| {
+    // A licence this short is not a licence. Every one of these files is
+    // kilobytes of terms; anything near the length of the path
+    // `../../LICENSE-APACHE` is a symbolic link that a checkout turned into a
+    // text file, and this closure is what stops that reading as agreement below.
+    let canonical = |licence: &str| {
+        let bytes = fs::read(root.join(licence)).unwrap_or_else(|error| {
             panic!("the repository's own {licence} does not read: {error}")
         });
-
-        // A licence this short is not a licence. Both files are kilobytes of
-        // terms; anything near the length of the path `../../LICENSE-APACHE` is
-        // a symbolic link that a checkout turned into a text file, and this
-        // assertion is what stops that reading as agreement below.
         assert!(
-            canonical.len() > 512,
+            bytes.len() > 512,
             "the repository's own {licence} is {} bytes, which is too short to be a licence",
-            canonical.len(),
+            bytes.len(),
         );
+        bytes
+    };
 
-        for (name, directory) in members() {
-            let path = directory.join(licence);
-            match fs::read(&path) {
-                Err(error) => faults.push(format!("{name}: {licence} does not read: {error}")),
-                Ok(bytes) if bytes != canonical => faults.push(format!(
-                    "{name}: {licence} is {} bytes and the repository's is {}; the two have \
-                     drifted, or this one is an unresolved symbolic link",
-                    bytes.len(),
-                    canonical.len(),
-                )),
-                Ok(_) => {}
-            }
+    let mut compare =
+        |name: &str, path: PathBuf, licence: &str, canonical: &[u8]| match fs::read(&path) {
+            Err(error) => faults.push(format!("{name}: {licence} does not read: {error}")),
+            Ok(bytes) if bytes != canonical => faults.push(format!(
+                "{name}: {licence} is {} bytes and the repository's is {}; the two have \
+                 drifted, or this one is an unresolved symbolic link",
+                bytes.len(),
+                canonical.len(),
+            )),
+            Ok(_) => {}
+        };
+
+    for licence in LICENCES {
+        let text = canonical(licence);
+        for (name, directory) in &members {
+            compare(name, directory.join(licence), licence, &text);
         }
+    }
+
+    // The upstream notice is held to the same standard, and for a sharper
+    // reason: it is the only file here whose bytes a third party's licence
+    // requires, so a drifted or unresolved copy is a condition unmet rather than
+    // a promise of our own broken.
+    let upstream = canonical(UPSTREAM_LICENCE);
+    for (name, _) in REDISTRIBUTORS {
+        let directory = root.join("crates").join(name);
+        compare(
+            name,
+            directory.join(UPSTREAM_LICENCE),
+            UPSTREAM_LICENCE,
+            &upstream,
+        );
     }
 
     assert!(faults.is_empty(), "{}", faults.join("\n"));
@@ -245,4 +403,51 @@ fn the_listing_check_fires_on_a_listing_without_a_licence() {
         licences_missing_from(both).is_empty(),
         "the check should be satisfied by a listing that has both",
     );
+}
+
+#[test]
+fn the_upstream_notice_check_reads_a_listing_in_both_directions() {
+    // Exactly the listing `cargo package --list -p conform-model-cads` produced
+    // before this rule existed: both of the workspace's own licences present,
+    // which is what made the defect invisible, and the upstream notice absent.
+    let before = "Cargo.toml\nLICENSE-APACHE\nLICENSE-MIT\nREADME.md\nsrc/lib.rs\n";
+    assert!(
+        !packages_the_upstream_notice(before),
+        "the check should not find the upstream notice in a listing that has only the \
+         workspace's own two licences",
+    );
+
+    let after = "Cargo.toml\nLICENSE-APACHE\nLICENSE-MIT\nLICENSE-MIT-upstream\nREADME.md\n";
+    assert!(
+        packages_the_upstream_notice(after),
+        "the check should find the upstream notice in a listing that has it",
+    );
+
+    // `LICENSE-MIT` is a prefix of `LICENSE-MIT-upstream`, so a check written
+    // with `contains` or `starts_with` would read the first as the second and
+    // call every crate in the workspace compliant.
+    assert!(
+        !packages_the_upstream_notice("Cargo.toml\nLICENSE-MIT\nREADME.md\n"),
+        "the check should not mistake LICENSE-MIT for LICENSE-MIT-upstream",
+    );
+
+    // And a crate directory holding a file whose name merely starts the same
+    // way is not the notice either.
+    assert!(
+        !packages_the_upstream_notice("Cargo.toml\nLICENSE-MIT-upstream.md\nREADME.md\n"),
+        "the check should match the notice's name exactly, not as a prefix",
+    );
+}
+
+#[test]
+fn every_crate_that_owes_the_upstream_notice_says_why() {
+    // A list entry with an empty reason is a list entry whose failure message
+    // would read "it  from data-modelling-sdk", and the reason is the whole
+    // value of recording the crate rather than just its name.
+    for (name, reason) in REDISTRIBUTORS {
+        assert!(
+            !reason.trim().is_empty(),
+            "{name} is listed as redistributing upstream material with no reason recorded",
+        );
+    }
 }

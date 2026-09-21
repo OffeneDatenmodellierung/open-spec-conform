@@ -50,8 +50,10 @@ The model refuses a document missing one of the four keys ODPS lists as
 Ported from
 [`data-modelling-sdk`](https://github.com/OffeneDatenmodellierung/data-modelling-sdk)
 at commit **`22c9c218`**, from `crates/core/src/models/odps.rs`, under that
-repository's **MIT** licence — preserved at `LICENSE-MIT-upstream` in the
-repository root. Upstream doc comments are kept wherever they carry knowledge.
+repository's **MIT** licence — preserved verbatim at `LICENSE-MIT-upstream`,
+both at the repository root and in this crate's own directory, so that it
+travels in the published `.crate` rather than only in this repository.
+Upstream doc comments are kept wherever they carry knowledge.
 `data-modelling-sdk` is MIT and this workspace is `MIT OR Apache-2.0`; MIT
 material redistributes under that dual offer with the notice preserved, so
 there is no licence conflict to report.
