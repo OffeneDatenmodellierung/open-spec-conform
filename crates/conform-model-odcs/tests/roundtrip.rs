@@ -181,3 +181,29 @@ fn fixtures_match_the_adapter_corpus() {
         );
     }
 }
+
+#[test]
+fn an_explicitly_empty_collection_is_written_back_absent() {
+    // The one normalisation this model performs, stated so it cannot be
+    // mistaken for the unknown-key guarantee. ODCS gives `tags: []` and an
+    // absent `tags` the same meaning, so collapsing them loses nothing a
+    // reader could act on -- but it *is* a change, and it is tested rather
+    // than left for someone to discover.
+    let json = r#"{"version":"1.0.0","apiVersion":"v3.1.0","kind":"DataContract",
+                   "id":"x","status":"active","tags":[]}"#;
+    let contract: ODCSContract = serde_json::from_str(json).unwrap();
+    assert!(contract.tags.is_empty());
+
+    let back = serde_json::to_string(&contract).unwrap();
+    assert!(
+        !back.contains("tags"),
+        "an empty collection should be omitted, got {back}"
+    );
+
+    // An unknown key, by contrast, is never collapsed -- not even an empty one.
+    let json = r#"{"version":"1.0.0","apiVersion":"v3.1.0","kind":"DataContract",
+                   "id":"x","status":"active","x-vendor":[]}"#;
+    let contract: ODCSContract = serde_json::from_str(json).unwrap();
+    let back: Value = serde_json::to_value(&contract).unwrap();
+    assert_eq!(back, serde_json::from_str::<Value>(json).unwrap());
+}

@@ -1,0 +1,51 @@
+# A realistic data product exercising the parts of the schema a minimal
+# document never reaches: both port kinds with their required keys, a
+# management port, a team with members, support channels and a description.
+#
+# This one should produce no errors and no warnings at all — the control that
+# proves the hygiene rules are not simply always firing.
+apiVersion: v1.0.0
+kind: DataProduct
+id: c9c1a5ee-7f70-4a1e-9f0f-0f0f1f2e3d4c
+name: Order Analytics
+version: 1.4.0
+status: active
+domain: sales
+tenant: RetailCorp
+description:
+  purpose: Publish curated order facts for analytics consumers.
+  usage: Query the `orders_gold` output port; refreshed hourly.
+  limitations: Personally identifying fields are removed upstream.
+tags:
+  - sales
+  - gold
+inputPorts:
+  - name: raw-orders
+    version: 2.3.0
+    contractId: 4b1f0f0e-2bb8-4a9d-9c17-4a4cbe3f2f2a
+outputPorts:
+  - name: orders_gold
+    description: Curated order facts.
+    type: tables
+    version: 1.4.0
+    contractId: 7a2e9c41-11f0-4c2a-9a6f-2f1d6e5b3c88
+    inputContracts:
+      - id: 4b1f0f0e-2bb8-4a9d-9c17-4a4cbe3f2f2a
+        version: 2.3.0
+managementPorts:
+  - name: discovery
+    content: discoverability
+    type: rest
+    url: https://catalog.example.com/products/order-analytics
+support:
+  - channel: '#retail-data'
+    url: https://example.slack.com/archives/C0000000000
+    tool: slack
+    scope: interactive
+team:
+  name: Retail Data Platform
+  description: Owns the retail data products.
+  members:
+    - username: ceastwood
+      name: Charlie Eastwood
+      role: Data Product Owner

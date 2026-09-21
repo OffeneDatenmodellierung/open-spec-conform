@@ -22,9 +22,14 @@ dependency tree, and which this crate knows nothing about.
 
 Every struct ends in `#[serde(flatten)] pub extra: Extra`, where `Extra` is
 `IndexMap<String, serde_json::Value>`. A document that goes in comes out again
-unchanged: vendor extensions, keys added by a later ODCS revision, and typos
-alike. `IndexMap` rather than `HashMap` so that the order is the document's
-order and serialization is deterministic.
+with every key it arrived with: vendor extensions, keys added by a later ODCS
+revision, and typos alike. `IndexMap` rather than `HashMap` so that the order
+is the document's order and serialization is deterministic.
+
+The one normalisation the model performs is that a collection written
+explicitly empty — `tags: []` — is written back out absent. ODCS gives the two
+the same meaning. It is stated rather than left to be discovered, and tested in
+`an_explicitly_empty_collection_is_written_back_absent`.
 
 This is the property the crate exists to provide. A model that silently dropped
 what it did not recognise would turn a read-modify-write into data loss, which

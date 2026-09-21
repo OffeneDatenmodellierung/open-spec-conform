@@ -23,6 +23,11 @@
 //! model at all. It is tested against the whole ODCS fixture corpus in
 //! `tests/roundtrip.rs`, by exact equality rather than by spot check.
 //!
+//! The single normalisation this model performs is that a collection written
+//! explicitly empty — `tags: []` — is written back out absent. ODCS gives the
+//! two the same meaning. It is stated rather than left to be discovered, and
+//! tested in `an_explicitly_empty_collection_is_written_back_absent`.
+//!
 //! The one thing this model *does* refuse is a document missing one of the
 //! five keys ODCS lists as `required` — `version`, `apiVersion`, `kind`, `id`,
 //! `status`. Those are the five non-`Option` fields of [`ODCSContract`].
