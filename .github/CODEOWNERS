@@ -1,0 +1,44 @@
+# Who is asked to review what.
+#
+# GitHub reads this file to assign reviewers automatically. It is *advisory*
+# until branch protection on `main` turns on "Require review from Code Owners";
+# without that setting a pull request can still be merged with nobody named
+# here having looked at it. Adding the file and enabling the rule are two
+# separate decisions, and only the first is made by committing this.
+#
+# One caveat worth knowing before enabling the rule: GitHub does not let an
+# author approve their own pull request. With a single code owner, turning on
+# "Require review from Code Owners" means every pull request that owner opens
+# needs either a second reviewer or an admin override. That is a reason to add
+# a second owner, not a reason to skip the file.
+
+# Everything, by default.
+* @pixie79
+
+# The paths below are already covered by the rule above. They are named
+# individually so that the day a team is added as a broad owner — which is the
+# usual way a repository grows — these do not quietly move with it. Each is
+# something where a wrong merge is expensive or irreversible.
+
+# Publishing. `cargo publish` cannot be undone: a version can be yanked but
+# never deleted, and the number is burned for good.
+/.github/workflows/release.yml   @pixie79
+/docs/PUBLISHING.md              @pixie79
+/tools/publish-order.py          @pixie79
+
+# The provenance record, and the bytes it vouches for. This repository exists
+# because a vendored schema once had no version, no source URL and no fetch
+# date; an unreviewed edit here is that defect returning.
+/specs.toml                      @pixie79
+/schemas/                        @pixie79
+
+# The gates. Weakening one of these is how a rule stops being enforced without
+# anybody deciding that it should.
+/deny.toml                       @pixie79
+/clippy.toml                     @pixie79
+/.github/workflows/ci.yml        @pixie79
+
+# Licensing. Every crate declares `MIT OR Apache-2.0` and ships these texts by
+# symbolic link, so a change here changes the terms in every published tarball.
+/LICENSE-MIT                     @pixie79
+/LICENSE-APACHE                  @pixie79
