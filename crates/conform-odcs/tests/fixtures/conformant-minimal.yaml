@@ -1,0 +1,12 @@
+# The smallest document the published ODCS v3.1.0 schema accepts: the five
+# properties it lists as `required`, and nothing else.
+#
+# Conformant, and still worth several warnings — it names no server, no team,
+# no schema and carries no description. That gap between "the schema accepts
+# it" and "a reviewer would accept it" is the whole reason this crate has a
+# hygiene band separate from its error band.
+version: 1.0.0
+apiVersion: v3.1.0
+kind: DataContract
+id: 53581432-6c55-4ba2-a65f-72344a91553a
+status: active

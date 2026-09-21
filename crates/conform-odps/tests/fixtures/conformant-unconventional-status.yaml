@@ -1,0 +1,21 @@
+# `status` is published by the schema as `examples`, not as an `enum`, so the
+# schema cannot object to a value outside the conventional set — and does not.
+# This document is conformant. The hygiene band says something about it anyway,
+# which is a rule that could not exist if errors and warnings were one channel.
+apiVersion: v1.0.0
+kind: DataProduct
+id: 1b0c6a7e-2d3f-4e5a-8b9c-0d1e2f3a4b5c
+name: Mothballed Product
+version: 2.0.0
+status: mothballed
+description:
+  purpose: Kept for audit only.
+inputPorts:
+  - name: archive
+    version: 2.0.0
+    contractId: 0d7b0f54-6d76-4a5e-a6a4-1a5a0a6a34b1
+outputPorts:
+  - name: archive_snapshot
+    version: 2.0.0
+team:
+  name: Archive Keepers

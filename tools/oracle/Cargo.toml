@@ -1,0 +1,41 @@
+# NOT a workspace member, and that is the whole design.
+#
+# `crates/*` is the workspace; this directory is outside it and declares its
+# own empty `[workspace]` so cargo treats it as a separate root. The reason is
+# `cargo deny`, which resolves the workspace graph INCLUDING dev-dependencies:
+# adding `data-modelling-core` as a dev-dependency of `conform-odcs` drags in
+# `yaml-rust 0.4.5`, and `cargo deny --all-features check` fails on it —
+#
+#   error[unmaintained]: yaml-rust is unmaintained.
+#   ├ ID: RUSTSEC-2024-0320
+#   ├ Solution: No safe upgrade is available!
+#
+# — which is a true and useful finding about the SDK, not something to silence.
+# Weakening `deny.toml` to make a test compile would be exactly the wrong
+# trade. So the oracle runs here, out of the gated graph, and commits what it
+# observed; `tests/oracle_agreement.rs` in each adapter crate reads those
+# recordings and guards them against going stale with a SHA-256 per fixture.
+#
+# Run it with `cargo run --manifest-path tools/oracle/Cargo.toml` from the
+# repository root. See README.md in this directory.
+[workspace]
+
+[package]
+name = "conform-oracle"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Records the pre-existing data-modelling-sdk validators' verdicts over the adapter crates' fixture corpora."
+
+[dependencies]
+# THE point of this crate: the actual pre-existing implementation, called
+# directly, not reimplemented. `default-features = false` drops the SDK's
+# `api-backend` default (reqwest + native-tls); `schema-validation` is the
+# feature that makes `validate_odcs_internal` and `validate_odps_internal`
+# validate anything at all rather than return `Ok(())` from their
+# `cfg(not(...))` stubs.
+data-modelling-core = { path = "../../../data-modelling-sdk/crates/core", default-features = false, features = ["schema-validation"] }
+
+serde_json = "1"
+sha2 = "0.11"

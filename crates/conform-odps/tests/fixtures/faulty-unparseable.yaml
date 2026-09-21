@@ -1,0 +1,6 @@
+# Not YAML at all: a flow sequence opened and never closed.
+apiVersion: v1.0.0
+kind: DataProduct
+outputPorts: [ { name: "orders_gold", version: "1.0.0"
+id: 9f1c
+status: active

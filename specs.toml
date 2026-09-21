@@ -1,0 +1,328 @@
+# The specifications this repository conforms to, and the provenance of the
+# bytes it conforms against.
+#
+# Read by `conform-registry`. Three rules govern what may be written here, and
+# each of them exists because of a defect already found in this estate:
+#
+#  1. `pinned_ref` names ONE immutable upstream revision — a release tag, a
+#     version identifier, or a commit SHA. Never `latest`, `main` or `HEAD`.
+#     A vendored copy of a moving document, pinned to a moving pointer, cannot
+#     be checked against anything: that is exactly what
+#     `odps-json-schema-latest.json` was, and a test in `conform-registry`
+#     fails the build if the string ever reappears here.
+#
+#  2. A field nobody could determine is LEFT OUT, and the entry's `notes` says
+#     what was looked at and what it did not say. A recorded unknown is usable
+#     evidence. A plausible-looking value nobody checked is worse than silence,
+#     because it reads as verified.
+#
+#  3. `sha256` is the digest of the exact bytes at `vendored_path`, and
+#     `conform-registry`'s tests re-hash every one of them on every run. The
+#     registry cannot drift from the files it describes without CI saying so.
+#
+# `fetched_at` is the date the bytes entered THIS repository. For all four
+# entries below that is the date they were copied from
+# `data-modelling-sdk/schemas/`, whose own fetch date from upstream is not
+# recorded anywhere in that repository — see each entry's `notes`.
+#
+# Provenance of the upstream URLs below: transcribed from
+# `data-modelling-sdk/schemas/README.md`, which records a source link per
+# schema. They have NOT been fetched — nothing in this crate performs network
+# access — so they are second-hand evidence, accurate as to what this estate
+# believes, unverified as to what upstream currently serves. `poll.endpoint`
+# values are mechanical GitHub-API transforms of those same repository URLs and
+# have likewise never been called.
+
+schema_version = 1
+
+
+# ---------------------------------------------------------------------------
+# ODCS — the primary data-contract standard in this estate.
+# ---------------------------------------------------------------------------
+[[spec]]
+id            = "odcs"
+name          = "Open Data Contract Standard"
+version       = "3.1.0"
+homepage      = "https://bitol-io.github.io/open-data-contract-standard/latest/"
+repository    = "https://github.com/bitol-io/open-data-contract-standard"
+steward       = "Bitol"
+pinned_ref    = "v3.1.0"
+vendored_path = "schemas/odcs-json-schema-v3.1.0.json"
+sha256        = "2cb7dd6fe43344d2233e0406438622681dc3ebadcf8f0d606a15b40c8f6752c0"
+fetched_at    = "2026-09-20"
+notes = """
+Version evidence, three independent signals agreeing: the filename; the \
+document's `properties.apiVersion.enum`, whose maximum is `v3.1.0` (a schema \
+can only enumerate versions that existed when it was written); and \
+`data-modelling-sdk/schemas/README.md`, which records "Version: v3.1.0".
+
+The document carries NO `$id`, so the bytes themselves contain no \
+machine-readable link back to Bitol. That absence is the reason this file \
+exists.
+
+`licence` is deliberately absent: no licence is recorded for this artefact \
+anywhere in `data-modelling-sdk` — not in the schema, not in the schemas \
+README, not in that repository's LICENSE, which covers its own MIT-licensed \
+code and says nothing about vendored third-party schemas. Determining it \
+requires reading the upstream repository, which this task did not do. Until \
+somebody does, these are bytes of unknown licence sitting in the tree.
+
+`homepage` is Bitol's documentation site as referenced across this estate; \
+note it is itself a `/latest/` URL and so tracks whatever Bitol publishes, \
+which is fine for a human-facing link and is why the pin lives in \
+`pinned_ref` instead. Bitol's own site is `https://bitol.io/`.
+
+Custody chain: copied 2026-09-20 from \
+`data-modelling-sdk/schemas/odcs-json-schema-v3.1.0.json`, byte-identical \
+(SHA-256 verified on both sides). That file was last touched there by commit \
+`2d7c7d22d8ecb5f1d6d718261e2b38e6e81682ee` (2026-01-03); when it was fetched \
+from upstream, and from which upstream revision, is recorded nowhere. The pin \
+below dates the document; it is not proof of byte-identity with Bitol's \
+published `v3.1.0` artefact, which nobody has yet diffed.
+"""
+
+  [spec.poll]
+  endpoint = "https://api.github.com/repos/bitol-io/open-data-contract-standard/releases/latest"
+  method   = "github-release"
+  field    = "tag_name"
+  cadence  = "weekly"
+
+
+# ---------------------------------------------------------------------------
+# ODPS — the motivating defect. Vendored upstream as "latest"; pinned here.
+# ---------------------------------------------------------------------------
+[[spec]]
+id            = "odps"
+name          = "Open Data Product Standard"
+version       = "1.0.0"
+homepage      = "https://bitol-io.github.io/open-data-product-standard"
+repository    = "https://github.com/bitol-io/open-data-product-standard"
+steward       = "Bitol"
+pinned_ref    = "v1.0.0"
+vendored_path = "schemas/odps-json-schema-v1.0.0.json"
+sha256        = "95ae53a90d85d17666b6a28d22ea5fff20313048fded5b92599546efe0589e14"
+fetched_at    = "2026-09-20"
+notes = """
+This is the artefact that motivated `conform-registry`. Upstream in \
+`data-modelling-sdk/schemas/` it is named `odps-json-schema-latest.json`: no \
+version, no source URL, no fetch date, no `$id`, and no PROVENANCE.md \
+anywhere in that repository. Nothing could answer "is this current?".
+
+Version evidence: `properties.apiVersion` is \
+`{ "default": "v1.0.0", "enum": ["v0.9.0", "v1.0.0"] }`. A schema can only \
+enumerate the versions that existed when it was written, so the enum's maximum \
+dates the document: this is ODPS v1.0.0, accepting v0.9.0 documents. The \
+filename contributed nothing; the enum is the only evidence there is.
+
+The vendored copy here is renamed `odps-json-schema-v1.0.0.json` to match, \
+byte-for-byte identical to the source file (SHA-256 verified on both sides, \
+15783 bytes) — the rename changes the name and nothing else.
+
+`licence` absent for the same reason as the ODCS entry: nothing in \
+`data-modelling-sdk` records one.
+
+Known limitation, stated rather than papered over: the `apiVersion` enum DATES \
+the document, it does not prove byte-identity with Bitol's published v1.0.0 \
+artefact. A local edit made before we took custody would not show up in the \
+enum. Diffing these bytes against upstream v1.0.0 is outstanding work; if that \
+diff comes back non-identical it is a finding to record here, not a reason to \
+unpin.
+
+Custody chain: copied 2026-09-20 from \
+`data-modelling-sdk/schemas/odps-json-schema-latest.json`, last touched there \
+by commit `2d7c7d22d8ecb5f1d6d718261e2b38e6e81682ee` (2026-01-03).
+"""
+
+  [spec.poll]
+  endpoint = "https://api.github.com/repos/bitol-io/open-data-product-standard/releases/latest"
+  method   = "github-release"
+  field    = "tag_name"
+  cadence  = "weekly"
+
+
+# ---------------------------------------------------------------------------
+# ODCL — the legacy data-contract format, kept for backward compatibility.
+# ---------------------------------------------------------------------------
+[[spec]]
+id            = "odcl"
+name          = "Data Contract Specification"
+version       = "1.2.1"
+repository    = "https://github.com/datacontract/datacontract-specification"
+pinned_ref    = "1.2.1"
+vendored_path = "schemas/odcl-json-schema-1.2.1.json"
+sha256        = "0badffad06608e912b81b91fb7fe974a6cdcd50676df2144c96946fb1f2bd815"
+fetched_at    = "2026-09-20"
+notes = """
+Naming: this estate calls it ODCL, "Open Data Contract Language", and names \
+the file accordingly. The document itself does not: its `title` is \
+`DataContractSpecification`, and its upstream repository is \
+`datacontract/datacontract-specification`. `name` records what the document \
+and its repository call it; `id` keeps this estate's `odcl` so existing \
+references still resolve. Worth reconciling with whoever chose ODCL.
+
+Version evidence, two signals agreeing: the filename, and \
+`properties.dataContractSpecification.enum`, whose maximum is `1.2.1` \
+(`["1.2.1", "1.2.0", "1.1.0", "0.9.3", "0.9.2", "0.9.1", "0.9.0"]`). \
+`data-modelling-sdk/schemas/README.md` agrees: "v1.2.1 (Last Supported)".
+
+`pinned_ref = "1.2.1"` is the upstream VERSION identifier, not a verified git \
+tag: upstream publishes this schema at the path \
+`versions/1.2.1/datacontract.schema.json` within its repository, so the \
+version is what identifies the revision. Whether upstream also tags releases `1.2.1` or \
+`v1.2.1` has not been checked — no network access was used. If it does, \
+tighten this to the tag.
+
+`homepage` absent: the schemas README records only the repository blob URL. \
+A documentation site for this specification may well exist, but guessing its \
+address is precisely the failure mode this file is built to prevent.
+
+`steward` absent: the only evidence available is the GitHub organisation name \
+in the repository URL, which names an account, not a maintaining body.
+
+`licence` absent: not recorded anywhere in `data-modelling-sdk`.
+
+Note the document declares JSON Schema draft-07, where the two Bitol schemas \
+declare 2019-09 — a validator handling both needs both drafts.
+
+Custody chain: copied 2026-09-20 from \
+`data-modelling-sdk/schemas/odcl-json-schema-1.2.1.json`, last touched there \
+by commit `2d7c7d22d8ecb5f1d6d718261e2b38e6e81682ee` (2026-01-03).
+"""
+
+  [spec.poll]
+  endpoint = "https://api.github.com/repos/datacontract/datacontract-specification/releases/latest"
+  method   = "github-release"
+  field    = "tag_name"
+  cadence  = "monthly"
+
+
+# ---------------------------------------------------------------------------
+# CADS — first-party. Included because a registry that covers only other
+# people's specifications leaves exactly the artefacts we control unverifiable.
+# ---------------------------------------------------------------------------
+[[spec]]
+id            = "cads"
+name          = "Compute Asset Description Specification"
+version       = "1.0"
+repository    = "https://github.com/OffeneDatenmodellierung/data-modelling-sdk"
+steward       = "OffeneDatenmodellierung"
+licence       = "MIT"
+pinned_ref    = "6c8769f21618afeb4660a2e47e2869c53c36f56f"
+vendored_path = "schemas/cads.schema.json"
+sha256        = "0412b5d2f04d16b00c27a4ef016e5d1d448b94a632ee02216576ad2809ca2526"
+fetched_at    = "2026-09-20"
+notes = """
+First-party: CADS has no external upstream. Its source of record is \
+`data-modelling-sdk`, whose `schemas/README.md` describes it as "Internal \
+specification".
+
+`pinned_ref` is the commit in that repository that last wrote these bytes, \
+verified first-hand rather than transcribed: `git log -1 -- \
+schemas/cads.schema.json` gives `6c8769f2` (2026-02-04), that commit is \
+contained in `origin/main`, and the blob at that commit hashes to the same \
+SHA-256 recorded above. This is the one entry here whose pin is a verified \
+immutable revision rather than a version identifier.
+
+`repository` and `steward` are first-hand too, read from that repository's \
+configured `origin` remote. `licence` is MIT, from its LICENSE file \
+("Copyright (c) 2025 Mark Olliver") — which covers this schema because, \
+unlike the three above, it is that repository's own work.
+
+`homepage` absent: there is no published documentation site. The document's \
+`$id` is `https://example.org/cads/schema/1.0/cads.schema.json`, an \
+`example.org` placeholder — not a resolvable address, and recording it as a \
+homepage would be recording a URL that cannot be fetched. It is, however, \
+evidence for `version = "1.0"`, and the schemas README agrees ("Version: v1.0").
+
+Being the only entry here with a real `$id` and no real upstream is an irony \
+worth noticing: the schema we control is the one that says where it lives, and \
+what it says is a placeholder.
+"""
+
+  [spec.poll]
+  endpoint = "https://api.github.com/repos/OffeneDatenmodellierung/data-modelling-sdk/commits?path=schemas/cads.schema.json"
+  method   = "github-commit"
+  field    = "sha"
+  cadence  = "monthly"
+
+
+# ---------------------------------------------------------------------------
+# OKF — the one entry here whose vendored artefact is not a schema, because the
+# specification does not publish one.
+# ---------------------------------------------------------------------------
+[[spec]]
+id            = "okf"
+name          = "Open Knowledge Format"
+version       = "0.2"
+repository    = "https://github.com/GoogleCloudPlatform/open-knowledge-format"
+steward       = "Google LLC"
+licence       = "Apache-2.0"
+pinned_ref    = "ad30107c31c06aec8a7d5636e0d1058118604e6f"
+vendored_path = "crates/conform-okf/tests/fixtures/okf-upstream/SHA256SUMS"
+sha256        = "bff09cf2d6443e82cddb5024aea02c9d9692e229fdc33a100ca26d01a70ca5dc"
+fetched_at    = "2026-09-20"
+notes = """
+**What is pinned here is not a schema.** OKF is a prose specification: there \
+is no JSON Schema, no machine-readable artefact, nothing of the shape the four \
+entries above vendor. What this repository holds instead is upstream's own \
+published corpus — two of the four knowledge bundles in the specification \
+repository, vendored as `conform-okf`'s fixtures — and the artefact named \
+above is `SHA256SUMS`, a manifest of the twenty markdown files in it. A corpus \
+cannot have one digest; a manifest of a corpus can, and drift in any one file \
+changes it.
+
+That indirection costs one guard, so the guard is supplied. \
+`conform-registry` re-hashes `SHA256SUMS` on every run, which stops the \
+registry drifting from the manifest but says nothing about the twenty files \
+it describes. `conform-okf`'s `vendored_fixtures_match_the_manifest` test \
+re-hashes all twenty and compares them to the manifest, and asserts the file \
+count so that a deletion is caught rather than passing quietly. Neither guard \
+alone closes the chain.
+
+Provenance evidence, and its standing: every upstream fact below is \
+**second-hand**, transcribed from the hand-written `PROVENANCE.md` that \
+accompanied these bytes in `roteiro`, where they were vendored on 2026-09-01. \
+Nothing has been fetched — no network access was used — so none of it has \
+been checked against what upstream serves today. The fixtures' own \
+`PROVENANCE.md` restates this at the point a reader meets the bytes.
+
+`pinned_ref` is the commit that record names, \
+`ad30107c31c06aec8a7d5636e0d1058118604e6f` (2026-08-21), and it is a commit \
+SHA rather than a tag: OKF's corpus is not released as versioned artefacts, so \
+a commit is what identifies a revision of it. `version = "0.2"` is the \
+specification version those bundles are conformant with, which is a different \
+statement from the pin and is why both are recorded.
+
+`licence` and `steward`: the same record states Apache-2.0, read from \
+`LICENSE.md` at the upstream repository root (it notes there is no `NOTICE` \
+file), and a copyright holder of Google LLC. `steward` is therefore the \
+recorded **copyright holder**, not a maintaining body that named itself one — \
+the distinction that kept `steward` out of the `odcl` entry, recorded here \
+rather than smoothed over. It is filled in because there is evidence for it; \
+it is qualified because the evidence is of the weaker kind.
+
+`homepage` absent: nothing in this estate records a documentation site for \
+OKF. Every reference to it across these repositories is the GitHub repository \
+URL already in `repository`, and guessing a docs address is precisely the \
+failure mode this file is built to prevent.
+
+Known limitation, stated rather than papered over: the pin dates the corpus, \
+it does not prove byte-identity with what `GoogleCloudPlatform` holds at \
+`ad30107c`. Diffing these twenty files against the upstream tree at that \
+commit is outstanding work; if that diff comes back non-identical it is a \
+finding to record here, not a reason to unpin.
+
+Custody chain: copied 2026-09-20 from \
+`roteiro/crates/rto-render/tests/fixtures/okf-upstream/`, byte-identical \
+(`diff -r` clean over all twenty files). That directory was last written there \
+by commit `8187c90985b379cf5432ac91e39e293cd0c24a25` (2026-09-01). The \
+selection was trimmed before it reached this repository — two of four bundles, \
+markdown only — and the fixtures' `PROVENANCE.md` records exactly what was \
+dropped, as Apache-2.0 §4(b) requires of a modified selection.
+"""
+
+  [spec.poll]
+  endpoint = "https://api.github.com/repos/GoogleCloudPlatform/open-knowledge-format/commits?path=bundles"
+  method   = "github-commit"
+  field    = "sha"
+  cadence  = "monthly"

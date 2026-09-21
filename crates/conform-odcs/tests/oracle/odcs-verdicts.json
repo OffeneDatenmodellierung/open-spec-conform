@@ -1,0 +1,101 @@
+{
+  "fixtures": [
+    {
+      "detail": null,
+      "fixture": "conformant-full.yaml",
+      "sha256": "e153ffcba9997dbdbe006668b3614256ef609a0dab535787b7c214dacc64eb85",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-minimal.yaml",
+      "sha256": "55f5923731e34d77582f6e926f3656c15c618477a3868ead2ae0827db8da2526",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-older-api-version.json",
+      "sha256": "383fd54b52b2d4cf389b4c0eb7098f86023202c9067ebd9fa2caf3f08865b3af",
+      "verdict": "ok"
+    },
+    {
+      "detail": null,
+      "fixture": "conformant-unconventional-status.yaml",
+      "sha256": "0958aa7201f1467d7ab7f474b6f67897190ce511581dd2f9e458c1ecd7805208",
+      "verdict": "ok"
+    },
+    {
+      "detail": "ODCS validation failed at path '/servers/0/type': \"teradata\" is not one of \"api\", \"athena\" or 32 other candidates",
+      "fixture": "faulty-bad-server.yaml",
+      "sha256": "9b07b1ccff032c6227372b3e85a9f4e3dd0ff266dcfbfe40a4683717e7c3782a",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCS validation failed at path 'root': null is not of type \"object\"",
+      "fixture": "faulty-empty.yaml",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCS validation failed at path '/apiVersion': \"v9.9.9\" is not one of \"v3.1.0\", \"v3.0.2\" or 5 other candidates",
+      "fixture": "faulty-many-faults.yaml",
+      "sha256": "25ac79035a17b31c103891100468b3e7e94dc10582b637b25973287879e22d4f",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCS validation failed at path 'root': \"version\" is a required property",
+      "fixture": "faulty-missing-required.yaml",
+      "sha256": "3b632adbd0bb2fe6149edabcb13b0ad72b616eac890fc65da83a87cfa162e85c",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCS validation failed at path 'root': null is not of type \"object\"",
+      "fixture": "faulty-only-comments.yaml",
+      "sha256": "dce9e1210019477f022c03adc2f35d5a93f018f5dbe4e708b1771de74569fb3a",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCS validation failed at path 'root': [\"orders\",\"customers\",\"shipments\"] is not of type \"object\"",
+      "fixture": "faulty-root-not-an-object.yaml",
+      "sha256": "b9df5f22e075ae142aba6d2118822312c00a6a243c8136153cbff373b5f7446e",
+      "verdict": "err"
+    },
+    {
+      "detail": "Failed to parse YAML: did not find expected ',' or '}' at line 6 column 1, while parsing a flow mapping at line 5 column 12",
+      "fixture": "faulty-unparseable.yaml",
+      "sha256": "a89047b48b1b10d427e3f4c548edf511832514a1098db7dc354da2e7e6c58699",
+      "verdict": "err"
+    },
+    {
+      "detail": "ODCL validation failed at path 'root': \"dataContractSpecification\" is a required property",
+      "fixture": "sniffed-odcl-columns-shape.yaml",
+      "sha256": "e72acb20c7bf5d8cfaf2c90ce789eb3f72999d2e69f407fb45fc8751f2d9c816",
+      "verdict": "err"
+    },
+    {
+      "detail": null,
+      "fixture": "sniffed-odcl-specification-key.yaml",
+      "sha256": "ceee577e28b9813d1015341cd63c20f31b91512408841ac10a7ed5dac9a2ced2",
+      "verdict": "ok"
+    }
+  ],
+  "how_to_regenerate": "cargo run --manifest-path tools/oracle/Cargo.toml",
+  "oracle": {
+    "crate": "data-modelling-core",
+    "crate_version": "2.4.0",
+    "features": [
+      "schema-validation"
+    ],
+    "function": "data_modelling_core::validation::schema::validate_odcs_internal",
+    "schema_it_reads": "schemas/odcs-json-schema-v3.1.0.json",
+    "schema_it_reads_sha256": "2cb7dd6fe43344d2233e0406438622681dc3ebadcf8f0d606a15b40c8f6752c0",
+    "source_commit": "22c9c2183d7641306ff42f7cd5c34540ece22715",
+    "source_repository": "data-modelling-sdk"
+  },
+  "recorded_by": "tools/oracle",
+  "schema_version": 1,
+  "vendored_schema": {
+    "path": "schemas/odcs-json-schema-v3.1.0.json",
+    "sha256": "2cb7dd6fe43344d2233e0406438622681dc3ebadcf8f0d606a15b40c8f6752c0"
+  }
+}

@@ -80,3 +80,31 @@ jobs:
       # sole root of the graph, which is exactly the isolation wanted here.
       - name: cargo deny (conform-core in isolation)
         run: cargo deny --all-features --manifest-path crates/conform-core/Cargo.toml check
+
+      # conform-registry alone, for the same reason one step up: it is the
+      # first crate here to take third-party dependencies at all, so the
+      # licence and advisory gates need to see its tree as its own graph root
+      # rather than blended into the workspace's.
+      - name: cargo deny (conform-registry in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-registry/Cargo.toml check
+
+      # conform-okf alone. It is the only crate here that takes a third-party
+      # *runtime* dependency of its own — `okf-core`, which no sibling uses —
+      # and the whole reason that dependency is affordable is its tree: one
+      # crate, nothing transitive. A workspace-wide run blends it into
+      # everybody else's graph, where a future version growing dependencies
+      # would not stand out.
+      - name: cargo deny (conform-okf in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-okf/Cargo.toml check
+
+      # And the two schema-driven adapters, each as its own graph root. These
+      # are the first crates here to take a JSON Schema implementation and a
+      # YAML parser, so a licence or advisory problem in either arrives
+      # through them; seeing their trees separately is what keeps "which
+      # crate brought that in?" answerable without reading a blended
+      # workspace graph.
+      - name: cargo deny (conform-odcs in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-odcs/Cargo.toml check
+
+      - name: cargo deny (conform-odps in isolation)
+        run: cargo deny --all-features --manifest-path crates/conform-odps/Cargo.toml check

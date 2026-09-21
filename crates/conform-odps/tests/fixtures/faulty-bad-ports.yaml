@@ -1,0 +1,26 @@
+# Conformant at the root, faulty inside the ports. Each port is wrong in its
+# own way, which is a case the single-string shape can report only one of.
+#
+#   inputPorts[0]:  `contractId` absent
+#   outputPorts[0]: `version` absent, and `sbom[0]` has no `url`
+#   managementPorts[0]: `content` absent
+apiVersion: v1.0.0
+kind: DataProduct
+id: 6e5d4c3b-2a19-4807-b6c5-d4e3f2a1b0c9
+name: Half Wired
+version: 0.1.0
+status: draft
+description:
+  purpose: Exercises several independent port faults at once.
+team:
+  name: Platform
+inputPorts:
+  - name: raw-orders
+    version: 1.0.0
+outputPorts:
+  - name: orders_gold
+    sbom:
+      - type: external
+managementPorts:
+  - name: discovery
+    type: rest

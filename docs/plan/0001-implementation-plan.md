@@ -232,9 +232,10 @@ findings are in §1.2 and they change the shape of the work in three ways.
    argues for doing ODCS/ODPS **early**, not last.
 
 **Consequences for sequencing.** OKF keeps its head start on quality of oracle
-(`tests/okf_interop.rs` + vendored upstream fixtures pinned in
-`PROVENANCE.md`), so Phase 3 still does OKF first — but for the narrower reason
-that its fixture corpus is the best, not because ODCS/ODPS lack an oracle.
+(vendored upstream fixtures pinned in `PROVENANCE.md`), so Phase 3 still does
+OKF first — but for the narrower reason that its fixture corpus is the best,
+not because ODCS/ODPS lack an oracle. This paragraph used to cite
+`tests/okf_interop.rs` as half of that oracle; it is not one — see §8.1.
 Phase 5 is unblocked and its acceptance criterion is unchanged.
 
 **Consequences for scope.** The estate validates far more than ODCS/ODPS/OKF:
@@ -749,7 +750,7 @@ prerequisites for everything; 3–7 can then proceed with some parallelism.
 |---|---|---|---|
 | **1** | `conform-core` 0.1.0 — types, trait, resolution, gate policy | — | Compiles with zero non-std deps; `cargo deny` clean standalone; no-leakage gate passes; three-way `Resolution` explicitly tested for "exists but not inspected" vs "does not exist" |
 | **2** | `conform-registry` 0.1.0 + `specs.toml` for all known specs | 1 | Every vendored schema in `data-modelling-sdk` has a pinned entry; ODPS pinned at v1.0.0 (§1.2.1) and diffed against Bitol's artefact; `registry verify` green; `latest` rejected by test |
-| **3** | `conform-okf` 0.1.0 — migrate Roteiro's `okf::conform` | 1, 2 | `tests/okf_interop.rs` passes **unchanged in its assertions**; `Finding`/`CheckReport` retired; CLI behaviour byte-identical (NFR-005) |
+| **3** | `conform-okf` 0.1.0 — migrate Roteiro's `okf::conform` | 1, 2 | Differential parity with the pre-migration `okf::conform` over the vendored upstream corpus — see §8.1; `Finding`/`CheckReport` retired |
 | **4** | `conform-cli` 0.1.0 — CLI, `--json`, then TUI | 1, 2, 3 | `--json`/non-`--json` diagnostic-set equality test; bare `validate` exits 0 with findings; TUI navigates registry and shows upstream links |
 | **5** | `conform-odcs` + `conform-odps` 0.1.0 | 1, 2, §1.4 resolved | Schema-conformance fixtures pass; **oracle strategy agreed per §1.4** |
 | **6** | `conform-ffi` 0.1.0 — C ABI + header (+ Python stretch) | 1 | `catch_unwind` at every boundary; valgrind/ASan clean on the C smoke test; `conform-core` tree unchanged by its existence |
@@ -760,6 +761,49 @@ prerequisites for everything; 3–7 can then proceed with some parallelism.
 only one with a real regression oracle, so it is where a wrong abstraction in
 Phase 1 will surface. Do not start Phase 5 before Phase 3 completes; if
 `conform-core`'s shape is wrong, OKF will prove it cheaply and ODCS/ODPS will not.
+
+### 8.1 Correction — what Phase 3's oracle actually is
+
+Phase 3's exit criterion above used to read *"`tests/okf_interop.rs` passes
+unchanged in its assertions"*, and §1.4 named that file, alongside the vendored
+fixtures, as the reason OKF keeps its head start on quality of oracle. **That
+was wrong about the file, and only about the file.** `okf_interop.rs` does not
+exercise the conformance layer at all. Its four tests import
+`rto_render::okf::read::{ReadOptions, Trust, read_bundle}` and assert over
+`OkfImport` and `rto_graph::Node` — trust tiers, `meta["okf"]` payloads,
+provenance. Neither `conform`, `validate_report`, `lint_report` nor
+`CheckReport` appears anywhere in it. It is the **reader's** interop test, it
+guards a real and valuable property, and it has nothing to say about whether
+`okf::conform` was ported faithfully. Porting it here would mean porting
+`okf::read` and `rto-graph` too, which is a different migration.
+
+What Phase 3 delivered instead is a stronger oracle than the criterion asked
+for, and one that does test the layer being migrated. The pre-migration
+`okf::conform` was compiled standalone — verbatim apart from its two `super::`
+couplings, one of which is a two-line loader — and both implementations were
+run over the same bytes and diffed finding by finding: severity, rule,
+document, message and order. Eight runs, and they agree on every finding in
+all eight: 44 across the two upstream bundles, and 68 across two states of a
+synthetic bundle built to reach the error paths the published corpus never
+takes (unparseable document, circular derivation, stale index listing,
+unimplemented `okf_version`, duplicate titles, malformed trust events,
+incomplete attested computation). 31 of the crate's 50 codes are exercised
+that way. The upstream half of those measured values is what
+`upstream_bundles_are_checked_the_same_way` pins; the synthetic bundles were a
+development instrument and are not committed, which is the weaker part of this
+and is stated rather than glossed.
+
+**The fixture half of §1.4's claim stands unchanged.** The vendored corpus
+*is* the best oracle material in this estate, and it is now pinned in
+`specs.toml` and hash-guarded in both directions. What moved is which test
+reads it.
+
+**CLI byte-identity (NFR-005) is out of scope here and remains open.** This
+repository has no CLI: `conform-cli` is Phase 4. The pre-migration renderer
+lives in Roteiro's `main.rs`, which also owns the escaping of foreign scalars
+on the way to a terminal — `conform-okf` deliberately leaves messages raw, so
+whichever renderer takes them on must escape exactly once. Phase 4 is where
+that criterion can first be met, and where it should be restated.
 
 ---
 

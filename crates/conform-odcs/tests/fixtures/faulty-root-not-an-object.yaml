@@ -1,0 +1,5 @@
+# A sequence at the root. A data contract is an object; this is a list of
+# strings that happens to be valid YAML.
+- orders
+- customers
+- shipments

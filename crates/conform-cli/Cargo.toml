@@ -1,0 +1,88 @@
+[package]
+name = "conform-cli"
+
+# LITERAL version, deliberately not `version.workspace = true`.
+#
+# The workspace provides no `[workspace.package] version` to inherit: every
+# crate in this family releases on its own cadence, because each tracks a
+# different upstream on a different release cycle and consumers must be able to
+# pin one without pinning the rest (plan §7.2, spec FR-011). This crate's
+# cadence is the user-facing one — the `--json` envelope and the key bindings
+# are its compatibility surface, and neither moves when a schema does.
+version = "0.1.0"
+
+description = "The `conform` console: a terminal UI for navigating and verifying vendored specifications, and a versioned JSON report for everything that is not a terminal."
+readme = "README.md"
+keywords = ["conformance", "tui", "cli", "diagnostics", "provenance"]
+categories = ["command-line-utilities", "development-tools"]
+
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[[bin]]
+name = "conform"
+path = "src/main.rs"
+
+[dependencies]
+# The shared vocabulary. Everything this binary renders is one of these
+# `Diagnostic`s; the renderers here add no findings of their own beyond the
+# handful of `CLI0xx` codes in `codes`, which are about the invocation rather
+# than about a document.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
+# The spec catalogue, and the upstream provenance the TUI puts one keystroke
+# away. `verify` is also what answers "have the vendored bytes drifted", which
+# the spec pane shows alongside the pin.
+conform-registry = { path = "../conform-registry", version = "0.1.0" }
+
+# The three adapters this binary drives. Each is resolved through the registry,
+# so a schema that has drifted is refused before any verdict is issued.
+conform-odcs = { path = "../conform-odcs", version = "0.1.0" }
+conform-odps = { path = "../conform-odps", version = "0.1.0" }
+conform-okf  = { path = "../conform-okf",  version = "0.1.0" }
+
+# Argument parsing. `derive` so the command surface is a description of itself
+# rather than a hand-written match over `args_os`.
+clap = { version = "4", features = ["derive"] }
+
+# `--json`. This crate owns its own serialisable envelope types rather than
+# enabling `conform-core/serde`: the envelope is *this* crate's compatibility
+# contract, versioned by `schema_version`, and coupling it to the internal
+# shape of a `Diagnostic` would mean a field rename in the harness became a
+# breaking change for every downstream consumer of the JSON. It also keeps
+# `conform-core`'s default dependency count at zero, which is NFR-001.
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# YAML, only to *sniff* which standard a document is written in — `kind:
+# DataContract` versus `kind: DataProduct`. The adapters parse the document
+# properly themselves; this reads the one key that decides which adapter is
+# asked. Same parser they use, so a document that sniffs one way cannot fail to
+# parse the other.
+serde_norway = "0.9"
+
+# The TUI. Both greenfield in this estate (plan §4). `crossterm` is ratatui's
+# default backend and is named here because this crate drives raw mode and the
+# event loop directly, not only through ratatui's re-export.
+ratatui   = "0.30"
+crossterm = "0.29"
+
+[dev-dependencies]
+# The tests read the `--json` envelope back, because asserting on a rendering
+# by string-matching would pass for the wrong reasons. Already in the graph.
+serde_json = "1"
+
+# `ratatui::backend::TestBackend` renders the console into an in-memory buffer,
+# which is what makes the TUI's share of the escaping obligation testable
+# rather than merely claimed. Already in the graph.
+ratatui = "0.30"
+
+# The console tests assert against `conform-core`'s own types — a `GatePolicy`
+# to build a request with, and a `Severity` to read back.
+conform-core = { path = "../conform-core", version = "0.1.0" }
+
+[lints]
+workspace = true
