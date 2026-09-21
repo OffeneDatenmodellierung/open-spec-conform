@@ -257,10 +257,40 @@ comes back that Tier 3 moves anyway, the work is well-defined — one
 `dmsdk-model` crate, 6,155 lines, no splitting, because the cluster does not
 decompose — and nothing in Tier 1 blocks it.
 
+### Every path stays inside its own crate
+
+This repository is going to crates.io, so a crate that reads a file outside its
+own directory passes in the workspace and fails in the tarball. Checked rather
+than assumed: none of the four model crates uses `include_str!`, a build
+script, or a path that leaves its directory. `cargo package` produces a
+complete tarball for each, and **all four crates' test suites pass when run
+from the unpacked tarball** rather than from the workspace.
+
+Two tests were removed to get there. `conform-model-odcs` and
+`conform-model-odps` each had a `fixtures_match_the_adapter_corpus` test
+comparing their fixture copies against `../conform-{odcs,odps}/tests/fixtures`.
+That is exactly the defect: it would have passed here and failed on publish.
+The fixtures are still copies, and `tests/fixtures/PROVENANCE.md` in each crate
+now records where they came from, at which commit, and the one-line `cp` that
+re-syncs them. The cost is that drift between the two corpora is no longer
+caught automatically, and that is the honest trade — a guarantee that holds
+only inside the workspace is not one this crate can make to a consumer.
+
+This is the same defect a separate agent is addressing in
+`conform-ffi/src/embedded.rs`, which `include_str!`s `../../../specs.toml` and
+two files from `../../../schemas/`. Worth noting that the adapter crates'
+*tests* have it too — `crates/conform-odcs/tests/support/mod.rs` has a
+`workspace_root()` helper that climbs two directories to reach `specs.toml`,
+and `conform-odps` and `conform-lexicon` have the same. Not touched here: those
+are validator crates and outside this change's scope, but they will fail the
+same way.
+
 ### Nothing left broken
 
 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets
 --all-features -- -D warnings` and `cargo deny --all-features check` are all
-clean. `cargo test --workspace` went from 284 to 350 passing, `--all-features`
-from 288 to 354, with nothing ignored and no assertion loosened.
-`cargo tree -p conform-core` is still a single node.
+clean. `cargo test --workspace` went from 298 to 365 passing, `--all-features` from
+311 to 378, with nothing ignored and no assertion loosened. (Those baselines
+are `origin/main` at `bf95437`, which landed `jsonschema` 0.56 and the
+`conform-ffi` wasm feature while this work was in progress; this branch is
+rebased onto it.) `cargo tree -p conform-core` is still a single node.

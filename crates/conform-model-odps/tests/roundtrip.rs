@@ -8,8 +8,14 @@
 //! while a vendor extension quietly disappears.
 //!
 //! The fixtures are copied verbatim from `crates/conform-odps/tests/fixtures/`,
-//! the corpus the ODPS adapter is pinned against.
-//! `fixtures_match_the_adapter_corpus` fails if the two ever drift apart.
+//! the corpus the ODPS adapter is pinned against; `tests/fixtures/PROVENANCE.md`
+//! records which commit they were taken at.
+//!
+//! They are *copies* rather than a path into the sibling crate, and that is
+//! deliberate: this crate is published to crates.io, and a test reading
+//! `../conform-odps/tests/fixtures` would pass in the workspace and fail in the
+//! tarball, because the sibling is not in it. Every path this crate touches
+//! stays inside this crate.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,8 +30,16 @@ fn fixture_dir() -> PathBuf {
 fn fixtures() -> Vec<(String, String)> {
     let mut found: Vec<(String, String)> = fs::read_dir(fixture_dir())
         .expect("fixture directory is readable")
-        .map(|entry| {
-            let path = entry.expect("directory entry is readable").path();
+        .map(|entry| entry.expect("directory entry is readable").path())
+        // The directory also holds PROVENANCE.md, which is documentation
+        // rather than a document to round-trip.
+        .filter(|path| {
+            matches!(
+                path.extension().and_then(|e| e.to_str()),
+                Some("yaml" | "yml" | "json")
+            )
+        })
+        .map(|path| {
             let name = path
                 .file_name()
                 .expect("fixture has a file name")
@@ -144,21 +158,4 @@ fn an_explicitly_empty_collection_is_written_back_absent() {
     let product: ODPSDataProduct = serde_json::from_str(json).unwrap();
     let back: Value = serde_json::to_value(&product).unwrap();
     assert_eq!(back, serde_json::from_str::<Value>(json).unwrap());
-}
-
-#[test]
-fn fixtures_match_the_adapter_corpus() {
-    let adapter = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../conform-odps/tests/fixtures")
-        .canonicalize()
-        .expect("the ODPS adapter's fixture corpus is present in the workspace");
-
-    for (name, text) in fixtures() {
-        let original_text = fs::read_to_string(adapter.join(&name))
-            .unwrap_or_else(|e| panic!("{name} is no longer in the adapter corpus: {e}"));
-        assert_eq!(
-            text, original_text,
-            "{name} has drifted from the adapter corpus"
-        );
-    }
 }
