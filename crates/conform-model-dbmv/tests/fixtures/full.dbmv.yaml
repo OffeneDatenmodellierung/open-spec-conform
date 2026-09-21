@@ -1,0 +1,59 @@
+# A metric view document exercising the parts of the format a minimal document
+# never reaches: a filter, nested joins for a snowflake schema, a formatted
+# measure, a windowed semi-additive measure, and a materialization block with
+# both view types.
+#
+# Authored here: unlike ODCS, ODPS and CADS, DBMV has no schema vendored in
+# this repository, because Databricks publishes the format as prose. See this
+# crate's README.
+apiVersion: v1.0.0
+kind: MetricViews
+system: retail-warehouse
+description: Curated order metrics for the retail domain.
+metricViews:
+  - name: orders_metrics
+    version: "1.1"
+    source: catalog.retail.orders
+    filter: status = 'completed'
+    comment: One row per completed order.
+    dimensions:
+      - name: order_date
+        expr: order_date
+        display_name: Order Date
+      - name: customer_nation
+        expr: nation.name
+        display_name: Customer Nation
+        comment: Reached through two joins.
+    measures:
+      - name: total_revenue
+        expr: SUM(revenue)
+        display_name: Total Revenue
+        format:
+          type: currency
+      - name: ytd_revenue
+        expr: SUM(revenue)
+        window:
+          - order: order_date
+            range: cumulative
+            semiadditive: last
+    joins:
+      - name: customers
+        source: catalog.retail.customers
+        on: source.customer_id = customers.id
+        joins:
+          - name: nation
+            source: catalog.retail.nations
+            using:
+              - nation_id
+    materialization:
+      schedule: every 6 hours
+      mode: relaxed
+      materialized_views:
+        - name: baseline
+          type: unaggregated
+        - name: revenue_by_date
+          type: aggregated
+          dimensions:
+            - order_date
+          measures:
+            - total_revenue

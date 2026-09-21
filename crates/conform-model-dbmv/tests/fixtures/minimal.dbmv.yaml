@@ -1,0 +1,7 @@
+# The smallest document this model accepts: a system, and nothing else. The
+# envelope's `apiVersion` and `kind` default, and are written here explicitly
+# so that the round-trip comparison is against what the document said rather
+# than against what the model filled in.
+apiVersion: v1.0.0
+kind: MetricViews
+system: empty-warehouse
