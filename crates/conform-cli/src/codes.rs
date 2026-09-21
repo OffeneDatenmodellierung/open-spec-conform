@@ -31,8 +31,14 @@ pub const UNKNOWN_SPEC: &str = "CLI004";
 /// catalogue and have no validator yet.
 pub const NO_ADAPTER_FOR_SPEC: &str = "CLI005";
 
-/// No `specs.toml` could be found, so nothing can say where any vendored
-/// artefact came from.
+/// **Retired.** No `specs.toml` could be found, so nothing could say where any
+/// vendored artefact came from.
+///
+/// This binary can no longer reach that state: when nothing on disk answers it
+/// falls back to the catalogue compiled into it (see [`crate::embedded`]) and
+/// says on the `registry:` line that it did. The constant stays, unemitted,
+/// because a code is retired rather than reused — anybody still suppressing or
+/// matching on `CLI100` must not one day find it attached to something else.
 pub const REGISTRY_NOT_FOUND: &str = "CLI100";
 
 /// A document was not checked, because the validator for its standard could

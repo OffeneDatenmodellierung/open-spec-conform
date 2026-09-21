@@ -22,44 +22,72 @@ conform registry verify          # re-hash the vendored bytes against specs.toml
 `--json` works on any of them. `--spec <id>` restricts any of them to one
 catalogued specification.
 
-## You need a registry, and the binary does not carry one
+## Which registry answered, and why that matters
 
-**Read this before the first run.** `conform` will not validate anything until
-it can find a `specs.toml` — the catalogue recording, for each standard, which
-upstream it came from, which immutable ref it is pinned to, and the SHA-256 of
-the vendored schema. It looks for one in the current directory and every
-directory above it, and `--registry <path>` names one directly.
+`conform` checks documents against **vendored schemas whose provenance it
+verifies first**. The catalogue that records where each schema came from — the
+upstream, the immutable ref it is pinned to, and the SHA-256 of the bytes — is
+`specs.toml`, and every run re-hashes the bytes against it before issuing any
+verdict. A verdict against an unverified schema is not a conformance verdict.
 
-Installing from crates.io gives you the binary and not the catalogue, so a
-first run in a fresh directory looks like this:
+Three places that catalogue can come from, in this order:
 
-```
+| Precedence | Source | `registry:` line says |
+| --- | --- | --- |
+| 1 | `--registry <path>` | `…/specs.toml (--registry)` |
+| 2 | a `specs.toml` at or above the working directory | `…/specs.toml (found by searching upward…)` |
+| 3 | the copy compiled into this binary | `embedded in conform-cli 0.1.0 (…)` |
+
+**Every run prints which one answered.** That is not decoration. An embedded
+catalogue quietly answering for a repository you believed you were checking
+would be a false green of exactly the kind this project exists to prevent, so
+the origin is part of the output — and in `--json`, a structured
+`registry_origin` with a `kind` your pipeline can branch on.
+
+### Installed from crates.io: it works out of the box
+
+`cargo install conform-cli` gives you a binary that carries the catalogue and
+every schema it vouches for, so it validates immediately:
+
+```console
 $ conform validate contract.yaml
-✗ specs.toml
-  error CLI100 at specs.toml
-      no `specs.toml` in /home/you/project or any directory above it
-      help: run from inside a repository that has one, or pass `--registry <path>`
-            — without a registry nothing can say where a vendored specification came from
-
-exit:  2 — the run could not be performed, so nothing here is a verdict on any document
+conform 0.1.0 — validate
+registry: embedded in conform-cli 0.1.0 (no specs.toml found on disk; pinned when this version was published)
 ```
 
-That is deliberate rather than an oversight, and it is the same rule every
-crate in this family follows: **a verdict issued against an unverified schema
-is not a conformance verdict.** A binary carrying its own silent copy of a
-schema is the artefact this project was built in response to — see
-`conform-registry` — so `conform` refuses to invent one.
-
-To get a registry and the schemas it points at, clone
-[the repository](https://github.com/OffeneDatenmodellierung/open-spec-conform)
-and point `--registry` at its `specs.toml`. Then every report carries the
-provenance with it:
+The digest gate is not skipped for the embedded path — it is the same check,
+through the same code, and a report says so:
 
 ```
 info ODCS904 at contract.yaml
-    validated against odcs@3.1.0; bytes at `schemas/odcs-json-schema-v3.1.0.json`
-    verified against the digest `specs.toml` records for upstream pin `v3.1.0`
+    validated against odcs@3.1.0; bytes of `schemas/odcs-json-schema-v3.1.0.json`
+    embedded in conform-cli 0.1.0 at publish time and re-hashed here against the
+    digest its catalogue records for upstream pin `v3.1.0`; the catalogue is
+    embedded alongside them, so this says nothing about any `specs.toml` on disk
 ```
+
+That last clause is the honest limit. Both sides of the comparison were frozen
+into the executable at the same moment, so it proves *this binary* was built
+from consistent bytes. It cannot speak for any file on disk today — checking
+the working tree is `conform registry verify` inside a checkout.
+
+### The embedded catalogue is pinned at publish time
+
+An installed `conform 0.1.0` carries `0.1.0`'s view of upstream, and keeps it
+for as long as it stays installed. If ODCS 3.2 ships next year, a
+`conform 0.1.0` you installed today will still be checking against 3.1.0 and
+will still say so on every report.
+
+That is a feature where reproducibility matters and a trap where currency does.
+Two ways out, and both are ordinary:
+
+- `cargo install conform-cli --force` to take a newer release, which carries a
+  newer catalogue.
+- `--registry path/to/specs.toml` to check against a catalogue you control —
+  a clone of
+  [this repository](https://github.com/OffeneDatenmodellierung/open-spec-conform),
+  or your own vendored copy. This wins over the embedded one, and the
+  `registry:` line will say so.
 
 ## A worked example
 
@@ -69,7 +97,7 @@ $ conform validate contract.yaml --registry ../open-spec-conform/specs.toml
 
 ```
 conform 0.1.0 — validate
-registry: ../open-spec-conform/specs.toml
+registry: ../open-spec-conform/specs.toml (--registry)
 
 specs
   ✓ odcs   3.1.0    bytes matched
