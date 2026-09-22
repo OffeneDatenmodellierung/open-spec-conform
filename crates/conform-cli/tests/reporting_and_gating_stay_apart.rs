@@ -108,7 +108,7 @@ fn a_run_that_could_not_happen_exits_two() {
 /// would make this test agree with whatever that function currently says. A
 /// specification that grows a validator has to be deleted from here by hand,
 /// which is the same deliberate act `odcl` already required once.
-const CATALOGUED_WITHOUT_AN_ADAPTER: [&str; 3] = ["cads", "ossie", "ossie-dev"];
+const CATALOGUED_WITHOUT_AN_ADAPTER: [&str; 2] = ["cads", "ossie"];
 
 #[test]
 fn a_catalogued_specification_with_no_validator_is_said_so_rather_than_passed() {

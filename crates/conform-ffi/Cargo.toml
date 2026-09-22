@@ -82,7 +82,7 @@ conform-core = { path = "../conform-core", version = "0.1.0" }
 # reason every other consumer does: a verdict issued against an unverified
 # schema is not a conformance verdict, and an embedder cannot see that from the
 # other side of a C ABI.
-conform-registry = { path = "../conform-registry", version = "0.1.0" }
+conform-registry = { path = "../conform-registry", version = "0.2.0" }
 
 # The two document-shaped adapters. See `src/engine.rs` for why `conform-okf`
 # is deliberately absent: it validates a *directory*, and a bytes-in boundary

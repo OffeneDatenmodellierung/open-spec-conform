@@ -89,7 +89,7 @@ fn a_misspelled_field_is_refused_rather_than_ignored() {
 
 #[test]
 fn an_unknown_schema_version_is_refused_rather_than_guessed_at() {
-    let error = load_failure("schema_version = 2\n");
+    let error = load_failure("schema_version = 99\n");
     let diagnostic = &error.report().diagnostics()[0];
 
     assert_eq!(diagnostic.code.as_str(), codes::SCHEMA_VERSION);

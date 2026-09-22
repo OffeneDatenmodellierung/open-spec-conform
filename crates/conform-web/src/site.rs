@@ -256,13 +256,21 @@ impl Site {
             .entries()
             .iter()
             .enumerate()
-            .map(|(index, entry)| SpecCard {
-                // The re-hash. `verify_entry` reads the artefact off disk and
-                // compares; `SpecSummary::new` reads the verdict out of the
-                // diagnostic's code rather than out of a boolean, so a missing
-                // artefact and a drifted one stay distinguishable on the page.
-                summary: SpecSummary::new(entry, registry.verify_entry(index, entry)),
-                poll: entry.poll.clone(),
+            .flat_map(|(entry_index, entry)| {
+                let default_vi = entry.default_version_index();
+                entry
+                    .versions
+                    .iter()
+                    .enumerate()
+                    .map(move |(version_index, version)| SpecCard {
+                        summary: SpecSummary::new(
+                            entry,
+                            version,
+                            version_index == default_vi,
+                            registry.verify_version(entry_index, version_index, version),
+                        ),
+                        poll: version.poll.clone(),
+                    })
             })
             .collect();
 

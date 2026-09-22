@@ -247,7 +247,7 @@ impl Gate {
     }
 }
 
-/// One catalogued specification, and where it came from.
+/// One catalogued specification version, and where it came from.
 #[derive(Debug, Serialize)]
 pub struct Spec {
     /// The registry identifier.
@@ -256,6 +256,9 @@ pub struct Spec {
     pub name: String,
     /// The version the vendored bytes describe, or `null`.
     pub version: Option<String>,
+    /// Whether this is the default version for `--spec <id>` (the newest
+    /// non-draft). Additive in `schema_version` 1.
+    pub default: bool,
     /// Where upstream is. Every field inside may be `null`.
     pub upstream: Upstream,
     /// The bytes in this repository, and whether they still match.
@@ -275,6 +278,7 @@ impl Spec {
             id: spec.id.clone(),
             name: spec.name.clone(),
             version: spec.version.clone(),
+            default: spec.is_default,
             upstream: Upstream {
                 homepage: spec.homepage.clone(),
                 repository: spec.repository.clone(),

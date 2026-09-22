@@ -32,7 +32,7 @@ conform-core = { path = "../conform-core", version = "0.1.0" }
 # claims to be. This crate resolves its schema through the registry rather than
 # hard-coding a path, so provenance is enforced at the moment of use rather
 # than asserted in a comment.
-conform-registry = { path = "../conform-registry", version = "0.1.0" }
+conform-registry = { path = "../conform-registry", version = "0.2.0" }
 
 # The schema is JSON Schema 2019-09 (`$schema` in the vendored document says
 # so), and hand-rolling a validator for a draft with `unevaluatedProperties`

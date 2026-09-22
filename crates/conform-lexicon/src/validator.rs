@@ -96,11 +96,13 @@ impl LexiconValidator {
             ));
         };
         let entry = &registry.entries()[index];
+        let version = entry.default_version();
+        let vi = entry.default_version_index();
 
-        // Provenance before use. `verify_entry` re-hashes the bytes on disk;
+        // Provenance before use. `verify_version` re-hashes the bytes on disk;
         // its own diagnostic is kept verbatim so the reader gets the registry's
         // `REG0xx` code and its explanation, not a paraphrase.
-        let integrity = registry.verify_entry(index, entry);
+        let integrity = registry.verify_version(index, vi, version);
         if integrity.severity >= Severity::Error {
             let mut report = ConformanceReport::new();
             report.push(Diagnostic::error(
@@ -118,7 +120,7 @@ impl LexiconValidator {
             return Err(SchemaError { report });
         }
 
-        let path = registry.artefact_path(entry);
+        let path = registry.artefact_path(version);
         let text = std::fs::read_to_string(&path).map_err(|error| {
             SchemaError::single(Diagnostic::error(
                 codes::SCHEMA_UNREADABLE,
@@ -128,20 +130,20 @@ impl LexiconValidator {
         })?;
 
         let mut spec = SpecRef::new(entry.id.clone());
-        if let Some(version) = &entry.version {
-            spec = spec.with_version(version.clone());
+        if let Some(v) = &version.version {
+            spec = spec.with_version(v.clone());
         }
 
-        let provenance = match &entry.pinned_ref {
+        let provenance = match &version.pinned_ref {
             Some(pinned) => format!(
                 "bytes at `{}` verified against the digest `specs.toml` records for upstream pin \
                  `{pinned}`",
-                entry.vendored_path
+                version.vendored_path
             ),
             None => format!(
                 "bytes at `{}` verified against the digest `specs.toml` records; the entry \
                  records no upstream pin",
-                entry.vendored_path
+                version.vendored_path
             ),
         };
 

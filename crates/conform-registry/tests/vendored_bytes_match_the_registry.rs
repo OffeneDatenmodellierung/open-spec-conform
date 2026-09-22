@@ -20,20 +20,22 @@ fn every_entry_hashes_to_its_recorded_digest() {
     assert!(!registry.entries().is_empty(), "the registry is empty");
 
     for entry in registry.entries() {
-        let path = registry.artefact_path(entry);
-        let bytes = fs::read(&path)
-            .unwrap_or_else(|e| panic!("`{}` records `{}`: {e}", entry.id, path.display()));
+        for version in &entry.versions {
+            let path = registry.artefact_path(version);
+            let bytes = fs::read(&path)
+                .unwrap_or_else(|e| panic!("`{}` records `{}`: {e}", entry.id, path.display()));
 
-        assert_eq!(
-            sha256_hex(&bytes),
-            entry.sha256,
-            "`{}` ({}, {} bytes) no longer hashes to the digest recorded in specs.toml: \
-             either the artefact was edited — in which case it is not the document the \
-             entry claims — or specs.toml was updated without re-hashing it",
-            entry.id,
-            path.display(),
-            bytes.len()
-        );
+            assert_eq!(
+                sha256_hex(&bytes),
+                version.sha256,
+                "`{}` ({}, {} bytes) no longer hashes to the digest recorded in specs.toml: \
+                 either the artefact was edited — in which case it is not the document the \
+                 entry claims — or specs.toml was updated without re-hashing it",
+                entry.id,
+                path.display(),
+                bytes.len()
+            );
+        }
     }
 }
 
@@ -45,10 +47,11 @@ fn verify_reports_every_artefact_as_matching() {
     let registry = support::real_registry();
     let report = registry.verify();
 
+    let total_versions: usize = registry.entries().iter().map(|e| e.versions.len()).sum();
     assert_eq!(
         report.len(),
-        registry.entries().len(),
-        "verify must say something about every entry, including the ones that pass"
+        total_versions,
+        "verify must say something about every pinned version, including the ones that pass"
     );
     assert_eq!(
         report.count(Severity::Error),
@@ -148,7 +151,7 @@ fn every_vendored_schema_is_described_by_an_entry() {
     let described: BTreeSet<String> = registry
         .entries()
         .iter()
-        .map(|entry| entry.vendored_path.clone())
+        .flat_map(|entry| entry.versions.iter().map(|v| v.vendored_path.clone()))
         .collect();
 
     let mut undescribed = Vec::new();

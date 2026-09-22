@@ -60,7 +60,7 @@ conform-core = { path = "../conform-core", version = "0.1.0" }
 # The spec catalogue, and the upstream provenance the TUI puts one keystroke
 # away. `verify` is also what answers "have the vendored bytes drifted", which
 # the spec pane shows alongside the pin.
-conform-registry = { path = "../conform-registry", version = "0.1.0" }
+conform-registry = { path = "../conform-registry", version = "0.2.0" }
 
 # The four adapters this binary drives. Each is resolved through the registry,
 # so a schema that has drifted is refused before any verdict is issued.

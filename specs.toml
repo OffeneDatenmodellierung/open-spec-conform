@@ -33,19 +33,19 @@
 # transforms of the same repository URLs that have never been called. Each
 # entry's `notes` says so at the point a reader meets it.
 #
-# `ossie` and `ossie-dev` are the exception and are marked as such in their
-# own `notes`: their bytes were fetched from upstream directly on 2026-09-22
-# and their digests recomputed here afterwards, and every upstream fact
-# recorded for them — the tag, the commit, the licence files, the NOTICE — was
-# read at the pinned revision rather than taken from a note. That is
-# first-hand evidence, and it is the standard the rest of this file should be
-# brought up to rather than an exception to it.
+# `ossie` is the exception and is marked as such in its own `notes`: its bytes
+# were fetched from upstream directly on 2026-09-22 and their digests
+# recomputed here afterwards, and every upstream fact recorded for it — the
+# tag, the commit, the licence files, the NOTICE — was read at the pinned
+# revision rather than taken from a note. That is first-hand evidence, and it
+# is the standard the rest of this file should be brought up to rather than an
+# exception to it.
 #
 # None of this happens at validation time. Nothing in `conform-registry`
 # performs network access: the fetching above was done by hand, by the person
 # writing the entry, which is why what they found is written down here.
 
-schema_version = 1
+schema_version = 2
 
 
 # ---------------------------------------------------------------------------
@@ -54,14 +54,9 @@ schema_version = 1
 [[spec]]
 id            = "odcs"
 name          = "Open Data Contract Standard"
-version       = "3.1.0"
 homepage      = "https://bitol-io.github.io/open-data-contract-standard/latest/"
 repository    = "https://github.com/bitol-io/open-data-contract-standard"
 steward       = "Bitol"
-pinned_ref    = "v3.1.0"
-vendored_path = "schemas/odcs-json-schema-v3.1.0.json"
-sha256        = "2cb7dd6fe43344d2233e0406438622681dc3ebadcf8f0d606a15b40c8f6752c0"
-fetched_at    = "2026-09-20"
 notes = """
 Version evidence, three independent signals agreeing: the filename; the \
 document's `properties.apiVersion.enum`, whose maximum is `v3.1.0` (a schema \
@@ -93,11 +88,18 @@ below dates the document; it is not proof of byte-identity with Bitol's \
 published `v3.1.0` artefact, which nobody has yet diffed.
 """
 
-  [spec.poll]
-  endpoint = "https://api.github.com/repos/bitol-io/open-data-contract-standard/releases/latest"
-  method   = "github-release"
-  field    = "tag_name"
-  cadence  = "weekly"
+  [[spec.pin]]
+  version       = "3.1.0"
+  pinned_ref    = "v3.1.0"
+  vendored_path = "schemas/odcs-json-schema-v3.1.0.json"
+  sha256        = "2cb7dd6fe43344d2233e0406438622681dc3ebadcf8f0d606a15b40c8f6752c0"
+  fetched_at    = "2026-09-20"
+
+    [spec.pin.poll]
+    endpoint = "https://api.github.com/repos/bitol-io/open-data-contract-standard/releases/latest"
+    method   = "github-release"
+    field    = "tag_name"
+    cadence  = "weekly"
 
 
 # ---------------------------------------------------------------------------
@@ -106,14 +108,9 @@ published `v3.1.0` artefact, which nobody has yet diffed.
 [[spec]]
 id            = "odps"
 name          = "Open Data Product Standard"
-version       = "1.0.0"
 homepage      = "https://bitol-io.github.io/open-data-product-standard"
 repository    = "https://github.com/bitol-io/open-data-product-standard"
 steward       = "Bitol"
-pinned_ref    = "v1.0.0"
-vendored_path = "schemas/odps-json-schema-v1.0.0.json"
-sha256        = "95ae53a90d85d17666b6a28d22ea5fff20313048fded5b92599546efe0589e14"
-fetched_at    = "2026-09-20"
 notes = """
 This is the artefact that motivated `conform-registry`. Upstream in \
 `data-modelling-sdk/schemas/` it is named `odps-json-schema-latest.json`: no \
@@ -145,11 +142,18 @@ Custody chain: copied 2026-09-20 from \
 by commit `2d7c7d22d8ecb5f1d6d718261e2b38e6e81682ee` (2026-01-03).
 """
 
-  [spec.poll]
-  endpoint = "https://api.github.com/repos/bitol-io/open-data-product-standard/releases/latest"
-  method   = "github-release"
-  field    = "tag_name"
-  cadence  = "weekly"
+  [[spec.pin]]
+  version       = "1.0.0"
+  pinned_ref    = "v1.0.0"
+  vendored_path = "schemas/odps-json-schema-v1.0.0.json"
+  sha256        = "95ae53a90d85d17666b6a28d22ea5fff20313048fded5b92599546efe0589e14"
+  fetched_at    = "2026-09-20"
+
+    [spec.pin.poll]
+    endpoint = "https://api.github.com/repos/bitol-io/open-data-product-standard/releases/latest"
+    method   = "github-release"
+    field    = "tag_name"
+    cadence  = "weekly"
 
 
 # ---------------------------------------------------------------------------
@@ -158,12 +162,7 @@ by commit `2d7c7d22d8ecb5f1d6d718261e2b38e6e81682ee` (2026-01-03).
 [[spec]]
 id            = "odcl"
 name          = "Data Contract Specification"
-version       = "1.2.1"
 repository    = "https://github.com/datacontract/datacontract-specification"
-pinned_ref    = "1.2.1"
-vendored_path = "schemas/odcl-json-schema-1.2.1.json"
-sha256        = "0badffad06608e912b81b91fb7fe974a6cdcd50676df2144c96946fb1f2bd815"
-fetched_at    = "2026-09-20"
 notes = """
 Naming: this estate calls it ODCL, "Open Data Contract Language", and names \
 the file accordingly. The document itself does not: its `title` is \
@@ -201,11 +200,18 @@ Custody chain: copied 2026-09-20 from \
 by commit `2d7c7d22d8ecb5f1d6d718261e2b38e6e81682ee` (2026-01-03).
 """
 
-  [spec.poll]
-  endpoint = "https://api.github.com/repos/datacontract/datacontract-specification/releases/latest"
-  method   = "github-release"
-  field    = "tag_name"
-  cadence  = "monthly"
+  [[spec.pin]]
+  version       = "1.2.1"
+  pinned_ref    = "1.2.1"
+  vendored_path = "schemas/odcl-json-schema-1.2.1.json"
+  sha256        = "0badffad06608e912b81b91fb7fe974a6cdcd50676df2144c96946fb1f2bd815"
+  fetched_at    = "2026-09-20"
+
+    [spec.pin.poll]
+    endpoint = "https://api.github.com/repos/datacontract/datacontract-specification/releases/latest"
+    method   = "github-release"
+    field    = "tag_name"
+    cadence  = "monthly"
 
 
 # ---------------------------------------------------------------------------
@@ -215,14 +221,9 @@ by commit `2d7c7d22d8ecb5f1d6d718261e2b38e6e81682ee` (2026-01-03).
 [[spec]]
 id            = "cads"
 name          = "Compute Asset Description Specification"
-version       = "1.0"
 repository    = "https://github.com/OffeneDatenmodellierung/data-modelling-sdk"
 steward       = "OffeneDatenmodellierung"
 licence       = "MIT"
-pinned_ref    = "6c8769f21618afeb4660a2e47e2869c53c36f56f"
-vendored_path = "schemas/cads.schema.json"
-sha256        = "0412b5d2f04d16b00c27a4ef016e5d1d448b94a632ee02216576ad2809ca2526"
-fetched_at    = "2026-09-20"
 notes = """
 First-party: CADS has no external upstream. Its source of record is \
 `data-modelling-sdk`, whose `schemas/README.md` describes it as "Internal \
@@ -251,11 +252,18 @@ worth noticing: the schema we control is the one that says where it lives, and \
 what it says is a placeholder.
 """
 
-  [spec.poll]
-  endpoint = "https://api.github.com/repos/OffeneDatenmodellierung/data-modelling-sdk/commits?path=schemas/cads.schema.json"
-  method   = "github-commit"
-  field    = "sha"
-  cadence  = "monthly"
+  [[spec.pin]]
+  version       = "1.0"
+  pinned_ref    = "6c8769f21618afeb4660a2e47e2869c53c36f56f"
+  vendored_path = "schemas/cads.schema.json"
+  sha256        = "0412b5d2f04d16b00c27a4ef016e5d1d448b94a632ee02216576ad2809ca2526"
+  fetched_at    = "2026-09-20"
+
+    [spec.pin.poll]
+    endpoint = "https://api.github.com/repos/OffeneDatenmodellierung/data-modelling-sdk/commits?path=schemas/cads.schema.json"
+    method   = "github-commit"
+    field    = "sha"
+    cadence  = "monthly"
 
 
 # ---------------------------------------------------------------------------
@@ -265,14 +273,9 @@ what it says is a placeholder.
 [[spec]]
 id            = "okf"
 name          = "Open Knowledge Format"
-version       = "0.2"
 repository    = "https://github.com/GoogleCloudPlatform/open-knowledge-format"
 steward       = "Google LLC"
 licence       = "Apache-2.0"
-pinned_ref    = "ad30107c31c06aec8a7d5636e0d1058118604e6f"
-vendored_path = "crates/conform-okf/tests/fixtures/okf-upstream/SHA256SUMS"
-sha256        = "bff09cf2d6443e82cddb5024aea02c9d9692e229fdc33a100ca26d01a70ca5dc"
-fetched_at    = "2026-09-20"
 notes = """
 **What is pinned here is not a schema.** OKF is a prose specification: there \
 is no JSON Schema, no machine-readable artefact, nothing of the shape the four \
@@ -333,30 +336,81 @@ markdown only — and the fixtures' `PROVENANCE.md` records exactly what was \
 dropped, as Apache-2.0 §4(b) requires of a modified selection.
 """
 
-  [spec.poll]
-  endpoint = "https://api.github.com/repos/GoogleCloudPlatform/open-knowledge-format/commits?path=bundles"
-  method   = "github-commit"
-  field    = "sha"
-  cadence  = "monthly"
+  [[spec.pin]]
+  version       = "0.2"
+  pinned_ref    = "ad30107c31c06aec8a7d5636e0d1058118604e6f"
+  vendored_path = "crates/conform-okf/tests/fixtures/okf-upstream/SHA256SUMS"
+  sha256        = "bff09cf2d6443e82cddb5024aea02c9d9692e229fdc33a100ca26d01a70ca5dc"
+  fetched_at    = "2026-09-20"
+
+    [spec.pin.poll]
+    endpoint = "https://api.github.com/repos/GoogleCloudPlatform/open-knowledge-format/commits?path=bundles"
+    method   = "github-commit"
+    field    = "sha"
+    cadence  = "monthly"
 
 
 # ---------------------------------------------------------------------------
-# Ossie — one specification, two entries, because two revisions of it are in
-# use and this format gives a standard exactly one row.
+# Ossie — one specification, two pinned versions.
 # ---------------------------------------------------------------------------
 [[spec]]
 id            = "ossie"
 name          = "Apache Ossie Core Metadata Specification"
-version       = "0.1.1"
 homepage      = "https://ossie.apache.org/"
 repository    = "https://github.com/apache/ossie"
 steward       = "The Apache Software Foundation (Apache Incubator - podling)"
 licence       = "Apache-2.0"
-pinned_ref    = "osi-0.1.1-rc1"
-vendored_path = "schemas/ossie-json-schema-0.1.1.json"
-sha256        = "c1e9adec39562786aa78809665fba568797b15f4c53a0847d9cbcf2dead1bc94"
-fetched_at    = "2026-09-22"
 notes = """
+**Two pinned versions.** This entry carries two revisions of the same \
+specification because the two are not interchangeable — 0.1.1 wraps models \
+in a `semantic_model` array, while 0.2.0.dev0 places each model directly \
+at the root — and both are in use.
+
+**Licence, and what the evidence actually says.** At the 0.1.1 tag the \
+repository ships two licence files: `LICENSE` (Apache-2.0) and `LICENSE-Docs` \
+(CC-BY-4.0), and its `README.md` splits them — "All code in this repository is \
+licensed under the Apache 2.0 license. The specification and documentation is \
+licensed under the Creative Commons Attribution license (CC BY)." A JSON \
+Schema is not obviously either: it is machine-readable like code and normative \
+like the specification, and nothing at that revision says which side of that \
+line it falls. `licence = "Apache-2.0"` is recorded because it is the licence \
+the repository as a whole carries at that tag and the only one it carries at \
+the 0.2.0.dev0 revision, where `LICENSE-Docs` no longer exists. The \
+reading this does not take — CC-BY-4.0 — adds attribution and nothing else, \
+and attribution is satisfied either way by `NOTICE-ossie-upstream`. Recording \
+the field as unknown would be false: it is one of two permissive licences, and \
+which one is a question for upstream rather than an absence of evidence.
+
+**Attribution travels with the bytes.** Apache-2.0 §4(d) requires the NOTICE \
+distributed with a work to accompany redistributions of it, and the NOTICE at \
+the 0.1.1 tag is not the NOTICE at the 0.2.0.dev0 pin: the earlier one reads \
+"Open Semantic Interchange / Copyright 2026 - Open Semantic Interchange", the \
+pre-donation one, and no `DISCLAIMER` file exists yet. Both notices, and the \
+podling DISCLAIMER from the later revision, are quoted verbatim in \
+`NOTICE-ossie-upstream` at the repository root, which `conform-cli` ships \
+because it is the crate that redistributes these bytes.
+
+**Incubating.** Ossie is an Apache Incubator podling, not a top-level project. \
+Its `DISCLAIMER` states the project "has yet to be fully endorsed by the ASF" \
+and that a redistributor "will need to conduct a thorough licensing review to \
+determine the overall implications of including this work". `steward` records \
+that status rather than smoothing it into "The Apache Software Foundation", \
+because a podling's governance and a TLP's are different things and the \
+difference is exactly what a reader deciding whether to depend on this needs.
+
+**No validator, deliberately.** Like `cads`, this is catalogued, vendored and \
+verified, and no adapter in this workspace checks documents against it. \
+`--spec ossie` refuses under `CLI005` and exits 2 rather than reporting a \
+clean run over zero documents.
+"""
+
+  [[spec.pin]]
+  version       = "0.1.1"
+  pinned_ref    = "osi-0.1.1-rc1"
+  vendored_path = "schemas/ossie-json-schema-0.1.1.json"
+  sha256        = "c1e9adec39562786aa78809665fba568797b15f4c53a0847d9cbcf2dead1bc94"
+  fetched_at    = "2026-09-22"
+  notes = """
 **Provenance here is first-hand.** Unlike every entry above, these bytes were \
 not copied from another repository in this estate: they were fetched from \
 upstream directly on 2026-09-22, from \
@@ -365,16 +419,6 @@ and the digest above was recomputed from the vendored file after it landed \
 rather than transcribed from the download. Every upstream fact below was read \
 at that same revision or through the GitHub API against this repository, not \
 taken from somebody's note.
-
-**Two entries, one standard.** `ossie` and `ossie-dev` describe the same \
-specification at two revisions. The registry gives a standard one row and \
-refuses two entries sharing an `id` (`REG006`), so carrying two pinned \
-versions means two identities — and `ossie-dev` is a version wearing an \
-identity field's clothes. The honest model is one entry with a list of pinned \
-versions, which is a change to the entry format, the rules, `verify`, the \
-embedded catalogue and the site renderer; it is not this change. Both entries \
-therefore record the same `name`, and that repetition is the symptom: read it \
-as a note that the format is one version short, not as two specifications.
 
 **The pin is a release candidate, and it is the only immutable ref there is.** \
 Upstream publishes no GitHub releases at all — the releases API returns an \
@@ -415,71 +459,28 @@ organisation. Same situation as `cads` above, with the extra wrinkle that the \
 placeholder is now also historically wrong. It is evidence for nothing except \
 that the bytes predate the donation.
 
-**Licence, and what the evidence actually says.** At this tag the repository \
-ships two licence files: `LICENSE` (Apache-2.0) and `LICENSE-Docs` \
-(CC-BY-4.0), and its `README.md` splits them — "All code in this repository is \
-licensed under the Apache 2.0 license. The specification and documentation is \
-licensed under the Creative Commons Attribution license (CC BY)." A JSON \
-Schema is not obviously either: it is machine-readable like code and normative \
-like the specification, and nothing at this revision says which side of that \
-line it falls. `licence = "Apache-2.0"` is recorded because it is the licence \
-the repository as a whole carries at this tag and the only one it carries at \
-the revision `ossie-dev` pins, where `LICENSE-Docs` no longer exists. The \
-reading this does not take — CC-BY-4.0 — adds attribution and nothing else, \
-and attribution is satisfied either way by `NOTICE-ossie-upstream`. Recording \
-the field as unknown would be false: it is one of two permissive licences, and \
-which one is a question for upstream rather than an absence of evidence.
-
-**Attribution travels with the bytes.** Apache-2.0 §4(d) requires the NOTICE \
-distributed with a work to accompany redistributions of it, and the NOTICE at \
-this tag is not the NOTICE at the other pin: here it reads "Open Semantic \
-Interchange / Copyright 2026 - Open Semantic Interchange", the pre-donation \
-one, and no `DISCLAIMER` file exists yet. Both notices, and the podling \
-DISCLAIMER from the later revision, are quoted verbatim in \
-`NOTICE-ossie-upstream` at the repository root, which `conform-cli` ships \
-because it is the crate that redistributes these bytes.
-
-**Incubating.** Ossie is an Apache Incubator podling, not a top-level project. \
-Its `DISCLAIMER` states the project "has yet to be fully endorsed by the ASF" \
-and that a redistributor "will need to conduct a thorough licensing review to \
-determine the overall implications of including this work". `steward` records \
-that status rather than smoothing it into "The Apache Software Foundation", \
-because a podling's governance and a TLP's are different things and the \
-difference is exactly what a reader deciding whether to depend on this needs.
-
-**No validator, deliberately.** Like `cads`, this is catalogued, vendored and \
-verified, and no adapter in this workspace checks documents against it. \
-`--spec ossie` refuses under `CLI005` and exits 2 rather than reporting a \
-clean run over zero documents.
-
-**Document shape, for a reader comparing the two entries.** Root `required` is \
-`[version, semantic_model]` — a wrapper array — where `ossie-dev` requires \
+**Document shape, for a reader comparing the two versions.** Root `required` is \
+`[version, semantic_model]` — a wrapper array — where 0.2.0.dev0 requires \
 `[version, name, datasets]` at the root. The two are not interchangeable, and \
 that incompatibility is the reason both are pinned rather than one superseding \
 the other.
 """
 
-  [spec.poll]
-  endpoint = "https://api.github.com/repos/apache/ossie/tags"
-  method   = "github-tag"
-  field    = "name"
-  cadence  = "monthly"
+    [spec.pin.poll]
+    endpoint = "https://api.github.com/repos/apache/ossie/tags"
+    method   = "github-tag"
+    field    = "name"
+    cadence  = "monthly"
 
 
-[[spec]]
-id            = "ossie-dev"
-name          = "Apache Ossie Core Metadata Specification"
-version       = "0.2.0.dev0"
-homepage      = "https://ossie.apache.org/"
-repository    = "https://github.com/apache/ossie"
-steward       = "The Apache Software Foundation (Apache Incubator - podling)"
-licence       = "Apache-2.0"
-pinned_ref    = "be2c73ff79dfeb39791807947bbf5989e9e00b83"
-vendored_path = "schemas/ossie-json-schema-0.2.0.dev0.json"
-sha256        = "022026fd353d69f3b5735c9cc831dfcf2e6284123d93214336ad8d2f75976f85"
-fetched_at    = "2026-09-22"
-notes = """
-**This entry pins a document upstream says is mutable.** `core-spec/spec.md` \
+  [[spec.pin]]
+  version       = "0.2.0.dev0"
+  pinned_ref    = "be2c73ff79dfeb39791807947bbf5989e9e00b83"
+  vendored_path = "schemas/ossie-json-schema-0.2.0.dev0.json"
+  sha256        = "022026fd353d69f3b5735c9cc831dfcf2e6284123d93214336ad8d2f75976f85"
+  fetched_at    = "2026-09-22"
+  notes = """
+**This pin covers a document upstream says is mutable.** `core-spec/spec.md` \
 carries, on its second line of prose, "**DRAFT version** — in development, \
 schema may change before 0.2.0 is released", and its version history is \
 blunter still: "**0.2.0.dev0** (Unreleased): In-development next minor \
@@ -489,7 +490,7 @@ and because a pin is the only thing that makes a mutable document checkable at \
 all: the pin does not claim the document is stable, it records which of its \
 states these bytes are.
 
-**Provenance is first-hand**, on the same terms as the `ossie` entry above: \
+**Provenance is first-hand**, on the same terms as the 0.1.1 pin above: \
 fetched 2026-09-22 from \
 `https://raw.githubusercontent.com/apache/ossie/main/core-spec/ossie-schema.json`, \
 with the digest recomputed from the vendored file afterwards.
@@ -525,7 +526,7 @@ reports; it never gates.
 
 **Shape, and what changed from 0.1.1.** Root `required` is \
 `[version, name, datasets]` with `additionalProperties: false` — the wrapper \
-the `ossie` entry's document requires is gone, which upstream's version history \
+the 0.1.1 document requires is gone, which upstream's version history \
 records as the breaking change of this release: "each standalone document \
 contains one model directly at the root; the `semantic_model` array is \
 removed". The document is self-contained: thirteen definitions under `$defs` \
@@ -542,19 +543,10 @@ schema. Recording it as a `homepage` would be recording a URL that cannot be \
 fetched; `homepage` is upstream's published site instead. This is the same \
 defect already documented for `cads` above, now in a second, unrelated \
 specification.
-
-**Steward, licence and attribution** are as recorded for `ossie` above, read at \
-this revision: `LICENSE` is Apache-2.0 and is the only licence file in the tree \
-here (the CC-BY `LICENSE-Docs` that existed at the 0.1.1 tag is gone), `NOTICE` \
-is the Apache one, and both it and the podling `DISCLAIMER` are quoted verbatim \
-in `NOTICE-ossie-upstream`.
-
-**No validator.** `--spec ossie-dev` refuses under `CLI005`, for the reason the \
-`ossie` and `cads` entries give.
 """
 
-  [spec.poll]
-  endpoint = "https://api.github.com/repos/apache/ossie/commits?path=core-spec/ossie-schema.json"
-  method   = "github-commit"
-  field    = "sha"
-  cadence  = "weekly"
+    [spec.pin.poll]
+    endpoint = "https://api.github.com/repos/apache/ossie/commits?path=core-spec/ossie-schema.json"
+    method   = "github-commit"
+    field    = "sha"
+    cadence  = "weekly"

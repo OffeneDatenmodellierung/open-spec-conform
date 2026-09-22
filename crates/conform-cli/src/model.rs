@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 
 use conform_core::{ConformanceReport, Diagnostic, GatePolicy, GateVerdict, Severity};
-use conform_registry::SpecEntry;
+use conform_registry::{PinnedVersion, SpecEntry};
 
 /// Which subcommand produced a [`Run`].
 ///
@@ -45,14 +45,14 @@ impl Command {
 
 /// The four standards this binary has an adapter for.
 ///
-/// The registry holds seven entries. `cads` and the two Ossie entries are
-/// catalogued, vendored and verified like the rest — there is simply no
-/// validator for them yet, and [`crate::codes::NO_ADAPTER_FOR_SPEC`] says so
-/// rather than letting a `--spec cads` run report a clean bill of health it
-/// never earned. The catalogue being wider than this enum is the normal state
-/// of affairs, not a gap waiting to be closed: vendoring a specification and
-/// writing a validator for it are separate pieces of work, and the first is
-/// worth doing on its own.
+/// The registry holds six entries (some with multiple pinned versions).
+/// `cads` and Ossie are catalogued, vendored and verified like the rest —
+/// there is simply no validator for them yet, and
+/// [`crate::codes::NO_ADAPTER_FOR_SPEC`] says so rather than letting a
+/// `--spec cads` run report a clean bill of health it never earned. The
+/// catalogue being wider than this enum is the normal state of affairs, not a
+/// gap waiting to be closed: vendoring a specification and writing a validator
+/// for it are separate pieces of work, and the first is worth doing on its own.
 ///
 /// Every identifier below is read from the adapter crate's own `SPEC_ID`
 /// constant, never typed out here. `conform-lexicon`'s is `odcl` and not
@@ -201,8 +201,8 @@ impl VerifyStatus {
     }
 }
 
-/// One registry entry, as this binary shows it: the provenance, plus what
-/// re-hashing the bytes said.
+/// One pinned version of a registry entry, as this binary shows it: the
+/// provenance, plus what re-hashing the bytes said.
 ///
 /// Every provenance field stays an [`Option`]. That is the whole point of the
 /// registry — a field nobody could determine is *left out*, and a recorded
@@ -248,42 +248,61 @@ pub struct SpecSummary {
     pub has_adapter: bool,
     /// Everything a reader needs in order to trust the entry.
     pub notes: Option<String>,
+    /// Whether this is the default version for this entry.
+    pub is_default: bool,
 }
 
 impl SpecSummary {
-    /// Build a summary from a registry entry and its verification diagnostic.
+    /// Build a summary from a registry entry, one of its pinned versions, and
+    /// the verification diagnostic for that version.
     #[must_use]
-    pub fn new(entry: &SpecEntry, verify_diagnostic: Diagnostic) -> Self {
+    pub fn new(
+        entry: &SpecEntry,
+        version: &PinnedVersion,
+        is_default: bool,
+        verify_diagnostic: Diagnostic,
+    ) -> Self {
         Self {
             id: entry.id.clone(),
             name: entry.name.clone(),
-            version: present(entry.version.as_deref()),
+            version: present(version.version.as_deref()),
             homepage: present(entry.homepage.as_deref()),
             repository: present(entry.repository.as_deref()),
             steward: present(entry.steward.as_deref()),
             licence: present(entry.licence.as_deref()),
-            pinned_ref: present(entry.pinned_ref.as_deref()),
-            vendored_path: entry.vendored_path.clone(),
-            sha256: entry.sha256.clone(),
-            fetched_at: entry.fetched_at.clone(),
-            provenance_gaps: entry
-                .provenance_gaps()
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
+            pinned_ref: present(version.pinned_ref.as_deref()),
+            vendored_path: version.vendored_path.clone(),
+            sha256: version.sha256.clone(),
+            fetched_at: version.fetched_at.clone(),
+            provenance_gaps: {
+                let mut gaps: Vec<String> = entry
+                    .provenance_gaps()
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect();
+                if version
+                    .pinned_ref
+                    .as_deref()
+                    .is_none_or(|v| v.trim().is_empty())
+                {
+                    gaps.push("pinned_ref".to_owned());
+                }
+                gaps
+            },
             verify: VerifyStatus::from_code(verify_diagnostic.code.as_str()),
             verify_diagnostic,
             has_adapter: Standard::from_spec_id(&entry.id).is_some(),
             notes: present(entry.notes.as_deref()),
+            is_default,
         }
     }
 
     /// The best upstream link for this entry: its documentation site if one is
     /// recorded, otherwise its repository, otherwise nothing.
     ///
-    /// Nothing is a real answer. Three of the seven entries in this
-    /// repository's registry record no homepage, and inventing one would be
-    /// the failure the catalogue exists to prevent.
+    /// Nothing is a real answer. Three of the six entries in this repository's
+    /// registry record no homepage, and inventing one would be the failure the
+    /// catalogue exists to prevent.
     #[must_use]
     pub fn upstream_link(&self) -> Option<&str> {
         self.homepage.as_deref().or(self.repository.as_deref())

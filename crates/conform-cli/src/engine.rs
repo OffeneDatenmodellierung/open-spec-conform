@@ -27,7 +27,7 @@ use conform_core::{
 use conform_lexicon::LexiconValidator;
 use conform_odcs::OdcsValidator;
 use conform_odps::OdpsValidator;
-use conform_registry::{Registry, SpecEntry};
+use conform_registry::{PinnedVersion, Registry, SpecEntry};
 
 use crate::codes;
 use crate::corpus;
@@ -483,7 +483,7 @@ fn embedded_schema(
 ) -> Result<EmbeddedSchema, ConformanceReport> {
     let source = Location::document(registry.source().clone());
 
-    let Some(index) = registry.entries().iter().position(|e| e.id == spec_id) else {
+    let Some(entry_index) = registry.entries().iter().position(|e| e.id == spec_id) else {
         return Err(single(
             Diagnostic::error(
                 provenance_failed,
@@ -499,9 +499,11 @@ fn embedded_schema(
             ),
         ));
     };
-    let entry = &registry.entries()[index];
+    let entry = &registry.entries()[entry_index];
+    let version_index = entry.default_version_index();
+    let version = entry.default_version();
 
-    let Some(text) = embedded::artefact(&entry.vendored_path) else {
+    let Some(text) = embedded::artefact(&version.vendored_path) else {
         return Err(single(
             Diagnostic::error(
                 provenance_failed,
@@ -509,7 +511,7 @@ fn embedded_schema(
                 format!(
                     "the embedded registry records `{}` for `{spec_id}`, and this binary carries \
                      no copy of those bytes",
-                    entry.vendored_path
+                    version.vendored_path
                 ),
             )
             .with_help(
@@ -519,13 +521,20 @@ fn embedded_schema(
         ));
     };
 
+    let label = version
+        .version
+        .as_deref()
+        .map_or_else(|| entry.id.clone(), |v| format!("{}@{v}", entry.id));
+
     // The gate. Nothing below this line runs against bytes that did not hash to
     // what the registry records for them.
     let integrity = conform_registry::verify_bytes(
-        index,
-        entry,
+        entry_index,
+        version_index,
+        &label,
+        version,
         text.as_bytes(),
-        embedded::artefact_name(&entry.vendored_path),
+        embedded::artefact_name(&version.vendored_path),
     );
     if integrity.severity >= Severity::Error {
         let mut report = single(
@@ -547,20 +556,20 @@ fn embedded_schema(
     }
 
     let mut spec = SpecRef::new(entry.id.clone());
-    if let Some(version) = &entry.version {
-        spec = spec.with_version(version.clone());
+    if let Some(v) = &version.version {
+        spec = spec.with_version(v.clone());
     }
 
     // Says *embedded*, and says what that does not cover. A sentence reading
     // the same as the on-disk one would be claiming a check this build cannot
     // perform: both sides of the comparison were frozen into the executable at
     // the same moment, so it speaks for this binary and for no file on disk.
-    let provenance = match &entry.pinned_ref {
+    let provenance = match &version.pinned_ref {
         Some(pinned) => format!(
             "bytes of `{}` embedded in {} {} at publish time and re-hashed here against the \
              digest its catalogue records for upstream pin `{pinned}`; the catalogue is embedded \
              alongside them, so this says nothing about any `specs.toml` on disk",
-            entry.vendored_path,
+            version.vendored_path,
             crate::human::PACKAGE_NAME,
             crate::human::TOOL_VERSION,
         ),
@@ -568,13 +577,13 @@ fn embedded_schema(
             "bytes of `{}` embedded in {} {} at publish time and re-hashed here against the \
              digest its catalogue records; the entry records no upstream pin, and the catalogue \
              is embedded alongside the bytes, so this says nothing about any `specs.toml` on disk",
-            entry.vendored_path,
+            version.vendored_path,
             crate::human::PACKAGE_NAME,
             crate::human::TOOL_VERSION,
         ),
     };
 
-    let name = embedded::artefact_name(&entry.vendored_path);
+    let name = embedded::artefact_name(&version.vendored_path);
     Ok(EmbeddedSchema {
         text,
         spec,
@@ -613,28 +622,65 @@ impl TextValidator for LexiconValidator {
     }
 }
 
-/// The catalogue, filtered by `--spec`, with every entry's bytes re-hashed.
+/// Parse a `--spec` value into an id and an optional `@version`.
 ///
-/// Re-hashing every entry on every run — including entries no document in this
+/// `"ossie"` → `("ossie", None)`.
+/// `"ossie@0.2.0.dev0"` → `("ossie", Some("0.2.0.dev0"))`.
+fn parse_spec(spec: &str) -> (&str, Option<&str>) {
+    match spec.split_once('@') {
+        Some((id, version)) => (id, Some(version)),
+        None => (spec, None),
+    }
+}
+
+/// The catalogue, filtered by `--spec`, with every version's bytes re-hashed.
+///
+/// Re-hashing every version on every run — including entries no document in this
 /// run is checked against — is deliberate. It costs a few kilobytes of SHA-256
 /// and it is what lets the spec pane show the pin and the drift status of any
 /// specification the moment it is selected, which is the "never more than two
 /// keystrokes away" requirement in plan §4.2.
 fn summarise(registry: &Registry, origin: &RegistryOrigin, only: Option<&str>) -> Vec<SpecSummary> {
+    let (filter_id, filter_version) = only.map(parse_spec).unzip();
+
     registry
         .entries()
         .iter()
         .enumerate()
-        .filter(|(_, entry)| only.is_none_or(|id| entry.id == id))
-        .map(|(index, entry)| {
-            SpecSummary::new(entry, verify_artefact(registry, origin, index, entry))
+        .filter(|(_, entry)| filter_id.is_none_or(|id| entry.id == id))
+        .flat_map(|(entry_index, entry)| {
+            let default_vi = entry.default_version_index();
+            entry
+                .versions
+                .iter()
+                .enumerate()
+                .filter(move |(_, version)| {
+                    filter_version
+                        .flatten()
+                        .is_none_or(|fv| version.version.as_deref() == Some(fv))
+                })
+                .map(move |(version_index, version)| {
+                    SpecSummary::new(
+                        entry,
+                        version,
+                        version_index == default_vi,
+                        verify_artefact(
+                            registry,
+                            origin,
+                            entry_index,
+                            version_index,
+                            entry,
+                            version,
+                        ),
+                    )
+                })
         })
         .collect()
 }
 
-/// Re-hash one entry's artefact, wherever this run's artefacts live.
+/// Re-hash one version's artefact, wherever this run's artefacts live.
 ///
-/// On disk this is `conform-registry`'s own `verify_entry`. Embedded, it is
+/// On disk this is `conform-registry`'s own `verify_version`. Embedded, it is
 /// that crate's `verify_bytes` — the *same* comparison, deliberately: the
 /// digest gate is the reason a verdict from this tool means anything, and two
 /// implementations of it would be one implementation and one place for it to
@@ -646,27 +692,35 @@ fn summarise(registry: &Registry, origin: &RegistryOrigin, only: Option<&str>) -
 fn verify_artefact(
     registry: &Registry,
     origin: &RegistryOrigin,
-    index: usize,
+    entry_index: usize,
+    version_index: usize,
     entry: &SpecEntry,
+    version: &PinnedVersion,
 ) -> Diagnostic {
     if !origin.is_embedded() {
-        return registry.verify_entry(index, entry);
+        return registry.verify_version(entry_index, version_index, version);
     }
-    match embedded::artefact(&entry.vendored_path) {
+    let label = version
+        .version
+        .as_deref()
+        .map_or_else(|| entry.id.clone(), |v| format!("{}@{v}", entry.id));
+    match embedded::artefact(&version.vendored_path) {
         Some(text) => conform_registry::verify_bytes(
-            index,
-            entry,
+            entry_index,
+            version_index,
+            &label,
+            version,
             text.as_bytes(),
-            embedded::artefact_name(&entry.vendored_path),
+            embedded::artefact_name(&version.vendored_path),
         ),
         None => Diagnostic::error(
             conform_registry::codes::ARTEFACT_MISSING,
-            Location::document(embedded::artefact_name(&entry.vendored_path))
-                .with_pointer(format!("/spec/{index}/sha256")),
+            Location::document(embedded::artefact_name(&version.vendored_path))
+                .with_pointer(format!("/spec/{entry_index}/pin/{version_index}/sha256")),
             format!(
-                "`{}` records `vendored_path = \"{}\"`, and this binary carries no embedded \
+                "`{label}` records `vendored_path = \"{}\"`, and this binary carries no embedded \
                  copy of it",
-                entry.id, entry.vendored_path
+                version.vendored_path
             ),
         )
         .with_help(

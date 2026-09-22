@@ -109,7 +109,7 @@ serde = { version = "1", default-features = false, features = ["std", "derive"],
 # resolves to a real entry in the repository's `specs.toml`, pinned to the
 # commit the fixtures came from. A `spec_ref` that leads nowhere is decoration,
 # and nothing else in the workspace would notice.
-conform-registry = { path = "../conform-registry", version = "0.1.0" }
+conform-registry = { path = "../conform-registry", version = "0.2.0" }
 
 [lints]
 workspace = true

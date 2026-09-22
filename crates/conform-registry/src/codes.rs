@@ -1,10 +1,5 @@
 //! The stable codes this crate raises findings under.
 //!
-//! Stability is the contract `conform-core` asks for: downstream tooling,
-//! suppression lists and CI annotations match on these strings, so a code is
-//! retired rather than reused, and the message attached to one may be reworded
-//! freely while the code may not.
-//!
 //! `REG0xx` is the registry file itself, `REG1xx` is reading it at all.
 
 /// `pinned_ref` names a moving target — `latest`, `main`, `HEAD` — rather than
@@ -42,6 +37,12 @@ pub const INSECURE_URL: &str = "REG009";
 /// `fetched_at` is not an ISO-8601 `YYYY-MM-DD` date.
 pub const MALFORMED_DATE: &str = "REG010";
 
+/// Two pinned versions within one standard share the same version string.
+pub const DUPLICATE_VERSION: &str = "REG011";
+
+/// A standard has no pinned versions at all.
+pub const NO_VERSIONS: &str = "REG012";
+
 /// The artefact named by `vendored_path` is not there.
 pub const ARTEFACT_MISSING: &str = "REG020";
 
@@ -52,9 +53,7 @@ pub const ARTEFACT_UNREADABLE: &str = "REG021";
 /// file changed or the registry did.
 pub const SHA256_MISMATCH: &str = "REG022";
 
-/// The artefact's bytes hash to exactly what the registry recorded. Reported
-/// as information, because "checked and correct" is a different statement
-/// from "not checked" and both look like silence otherwise.
+/// The artefact's bytes hash to exactly what the registry recorded.
 pub const ARTEFACT_VERIFIED: &str = "REG023";
 
 /// The registry file could not be read from disk.

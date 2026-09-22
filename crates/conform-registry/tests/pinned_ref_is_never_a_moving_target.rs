@@ -94,7 +94,7 @@ fn negative_control_the_real_registry_with_one_pin_swapped_for_latest_is_caught(
         "specs.toml with the ODPS pin set back to \"latest\" was accepted: the exact \
          defect this crate exists to prevent would be reintroducible"
     );
-    assert!(offenders[0].contains("/spec/1/pinned_ref"));
+    assert!(offenders[0].contains("/spec/1/pin/0/pinned_ref"));
 }
 
 #[test]

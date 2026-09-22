@@ -171,43 +171,48 @@ pub fn build(spec_id: &str) -> Result<Backend, BuildError> {
              it has no digest to be checked against"
         )));
     };
+    let version = entry.default_version();
 
     // The transcribed fact, checked. See `Embedded::vendored_path`.
-    if entry.vendored_path != embedded.vendored_path {
+    if version.vendored_path != embedded.vendored_path {
         return Err(BuildError::Registry(format!(
             "the embedded `{spec_id}` schema is stale: `{REGISTRY_NAME}` now points at \
              `{}`, and the bytes compiled into this build came from `{}`",
-            entry.vendored_path, embedded.vendored_path
+            version.vendored_path, embedded.vendored_path
         )));
     }
 
     // The gate. Nothing below this line runs against bytes that did not hash
     // to what the registry records for them.
     let digest = sha256_hex(embedded.schema.as_bytes());
-    if !digest.eq_ignore_ascii_case(entry.sha256.trim()) {
+    if !digest.eq_ignore_ascii_case(version.sha256.trim()) {
         return Err(BuildError::Registry(format!(
             "refusing to validate against the embedded `{spec_id}` schema: the bytes compiled \
              into this build hash to {digest}, and `{REGISTRY_NAME}` records {} for \
              `{}`",
-            entry.sha256.trim(),
-            entry.vendored_path
+            version.sha256.trim(),
+            version.vendored_path
         )));
     }
 
-    compile(embedded, entry)
+    compile(embedded, entry, version)
 }
 
 /// Compile the verified bytes into the adapter that speaks for them.
 ///
 /// Reached only after the digest matched; split out so that the gate above
 /// reads as a gate rather than as one arm of a match.
-fn compile(embedded: &Embedded, entry: &SpecEntry) -> Result<Backend, BuildError> {
+fn compile(
+    embedded: &Embedded,
+    entry: &SpecEntry,
+    version: &conform_registry::PinnedVersion,
+) -> Result<Backend, BuildError> {
     let mut spec = SpecRef::new(entry.id.clone());
-    if let Some(version) = &entry.version {
-        spec = spec.with_version(version.clone());
+    if let Some(v) = &version.version {
+        spec = spec.with_version(v.clone());
     }
 
-    let provenance = provenance(entry);
+    let provenance = provenance(version);
     let name = embedded.vendored_path;
 
     match embedded.spec_id {
@@ -235,20 +240,20 @@ fn compile(embedded: &Embedded, entry: &SpecEntry) -> Result<Backend, BuildError
 /// It says *embedded*, and it says what that does not cover. A provenance
 /// sentence that read the same as the on-disk one would be claiming a check
 /// this module cannot perform — see the note at the top of this file.
-fn provenance(entry: &SpecEntry) -> String {
-    match &entry.pinned_ref {
+fn provenance(version: &conform_registry::PinnedVersion) -> String {
+    match &version.pinned_ref {
         Some(pinned) => format!(
             "bytes of `{}` embedded in this build at compile time and re-hashed here against the \
              digest `{REGISTRY_NAME}` records for upstream pin `{pinned}`; the registry is \
              embedded alongside them, so this check cannot speak for the files on disk today",
-            entry.vendored_path
+            version.vendored_path
         ),
         None => format!(
             "bytes of `{}` embedded in this build at compile time and re-hashed here against the \
              digest `{REGISTRY_NAME}` records; the entry records no upstream pin, and the \
              registry is embedded alongside the bytes, so this check cannot speak for the files \
              on disk today",
-            entry.vendored_path
+            version.vendored_path
         ),
     }
 }
@@ -274,10 +279,11 @@ mod tests {
             let entry = registry
                 .find(embedded.spec_id)
                 .unwrap_or_else(|| panic!("no `{}` entry", embedded.spec_id));
-            assert_eq!(entry.vendored_path, embedded.vendored_path);
+            let version = entry.default_version();
+            assert_eq!(version.vendored_path, embedded.vendored_path);
             assert_eq!(
                 sha256_hex(embedded.schema.as_bytes()),
-                entry.sha256.trim().to_ascii_lowercase(),
+                version.sha256.trim().to_ascii_lowercase(),
             );
         }
     }
@@ -294,7 +300,7 @@ mod tests {
     fn the_provenance_sentence_says_what_the_check_cannot_cover() {
         let registry = Registry::load_str(REGISTRY_TOML, REGISTRY_NAME).expect("embedded registry");
         let entry = registry.find("odcs").expect("odcs entry");
-        let sentence = provenance(entry);
+        let sentence = provenance(entry.default_version());
         assert!(sentence.contains("embedded"), "{sentence}");
         assert!(sentence.contains("on disk today"), "{sentence}");
     }
