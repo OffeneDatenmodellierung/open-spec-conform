@@ -2,7 +2,7 @@
 //!
 //! # The rule, and why a test rather than care
 //!
-//! `specs.toml` omits `licence` on three of its five entries and `homepage` on
+//! `specs.toml` omits `licence` on three of its seven entries and `homepage` on
 //! three, and each entry's notes say what was looked at and what it did not
 //! say. That is the registry's central idea: a recorded unknown is usable
 //! evidence, and a plausible-looking value nobody checked is worse than

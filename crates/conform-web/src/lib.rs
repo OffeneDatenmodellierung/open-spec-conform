@@ -41,7 +41,7 @@
 //!
 //! # Absence is rendered as absence
 //!
-//! `specs.toml` deliberately omits `licence` on three of its five entries and
+//! `specs.toml` deliberately omits `licence` on three of its seven entries and
 //! `homepage` on three, and says in each entry's notes what was looked at and
 //! what it did not say. The page shows every such gap as `(not recorded)` —
 //! the console's words, so a reader meets one vocabulary and not two — and

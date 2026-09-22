@@ -35,8 +35,24 @@
 //! `conform-cli`, which ships the vendored schemas alongside its embedded
 //! catalogue — and one of those schemas is `data-modelling-sdk`'s own work
 //! rather than a standards body's, which is why the registry records a licence
-//! for it at all: three of its five entries record none, because nobody
+//! for it at all: three of its seven entries record none, because nobody
 //! upstream wrote one down.
+//!
+//! # The fourth file, and why a second notice was needed
+//!
+//! `NOTICE-ossie-upstream` is the same obligation arriving from a different
+//! licence. Two of the vendored schemas are Apache-2.0, and Apache-2.0 section
+//! 4(d) says that where the work includes a NOTICE file, a redistribution must
+//! carry a readable copy of the attribution notices in it. Upstream includes
+//! one, and — because the project changed hands between the two revisions
+//! vendored here — it is not the same NOTICE at both. Both are quoted verbatim
+//! in that file, along with the incubator DISCLAIMER that accompanies the
+//! newer of the two.
+//!
+//! Only `conform-cli` owes it, for the same reason it owes the MIT notice: it
+//! is the crate that ships the vendored bytes alongside its embedded
+//! catalogue. Which schemas those are, and which revisions they came from, are
+//! registry facts and are not transcribed here.
 //!
 //! Which schema that is, and which commit its bytes were last written at, are
 //! registry facts, and this file does not transcribe registry facts — read them
@@ -125,6 +141,22 @@ const LICENCES: [&str; 2] = ["LICENSE-MIT", "LICENSE-APACHE"];
 /// Carried by the crates in [`REDISTRIBUTORS`] and by no others.
 const UPSTREAM_LICENCE: &str = "LICENSE-MIT-upstream";
 
+/// The upstream attribution notices for the Apache-2.0 material vendored here,
+/// named exactly as the repository root names them.
+///
+/// Carried by the crates in [`NOTICE_REDISTRIBUTORS`] and by no others.
+const UPSTREAM_NOTICE: &str = "NOTICE-ossie-upstream";
+
+/// Every crate that redistributes Apache-2.0 material whose distribution
+/// includes a NOTICE file, and what each one redistributes.
+///
+/// Authored and checked in both directions, on exactly the reasoning
+/// [`REDISTRIBUTORS`] is checked in both directions.
+const NOTICE_REDISTRIBUTORS: [(&str, &str); 1] = [(
+    "conform-cli",
+    "embeds, with its catalogue, two vendored schemas taken from an Apache-2.0 project      that distributes a NOTICE file with them",
+)];
+
 /// Every crate that redistributes `data-modelling-sdk` material, and what each
 /// one redistributes.
 ///
@@ -199,6 +231,15 @@ fn redistributes_upstream(name: &str) -> Option<&'static str> {
         .map(|(_, reason)| reason)
 }
 
+/// Why this crate owes the upstream Apache-2.0 notices, or [`None`] if it does
+/// not.
+fn redistributes_notice(name: &str) -> Option<&'static str> {
+    NOTICE_REDISTRIBUTORS
+        .into_iter()
+        .find(|(crate_name, _)| *crate_name == name)
+        .map(|(_, reason)| reason)
+}
+
 /// The names in a `cargo package --list` listing that are missing from it.
 ///
 /// A free function rather than an assertion inline, so that
@@ -213,16 +254,18 @@ fn licences_missing_from(listing: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// Whether a `cargo package --list` listing carries the upstream MIT notice.
+/// Whether a `cargo package --list` listing carries a named file.
 ///
 /// Separate from [`licences_missing_from`] because the answer is read in both
-/// directions: the crates in [`REDISTRIBUTORS`] must package it, and every other
+/// directions: the crates that owe a notice must package it, and every other
 /// crate must not.
-fn packages_the_upstream_notice(listing: &str) -> bool {
-    listing
-        .lines()
-        .map(str::trim)
-        .any(|line| line == UPSTREAM_LICENCE)
+///
+/// The file is a parameter rather than a constant because there are now two
+/// such notices — one arriving from MIT, one from Apache-2.0 — and two
+/// near-identical matchers would be two places for the exact-match rule the
+/// unit test below pins to drift apart.
+fn packages(listing: &str, file: &str) -> bool {
+    listing.lines().map(str::trim).any(|line| line == file)
 }
 
 /// What `cargo package --list` says would go into this crate's tarball.
@@ -265,13 +308,17 @@ fn every_crate_packages_the_licences_it_owes() {
     let members = members();
     let mut faults = Vec::new();
 
-    // A name in REDISTRIBUTORS that is not a member is a typo, and a typo there
+    // A name in either list that is not a member is a typo, and a typo there
     // is a crate whose obligation silently stops being checked — the same
     // vacuous pass the member list is read from disk to avoid.
-    for (name, _) in REDISTRIBUTORS {
+    for (list, (name, _)) in REDISTRIBUTORS
+        .map(|entry| ("REDISTRIBUTORS", entry))
+        .into_iter()
+        .chain(NOTICE_REDISTRIBUTORS.map(|entry| ("NOTICE_REDISTRIBUTORS", entry)))
+    {
         assert!(
             members.iter().any(|(member, _)| member == name),
-            "REDISTRIBUTORS names {name}, which is not a member of this workspace; the rule it \
+            "{list} names {name}, which is not a member of this workspace; the rule it \
              states would never be checked against anything",
         );
     }
@@ -298,7 +345,7 @@ fn every_crate_packages_the_licences_it_owes() {
 
         match (
             redistributes_upstream(name),
-            packages_the_upstream_notice(&listing),
+            packages(&listing, UPSTREAM_LICENCE),
         ) {
             (Some(reason), false) => faults.push(format!(
                 "{name} would publish without {UPSTREAM_LICENCE}: it {reason} from \
@@ -310,6 +357,24 @@ fn every_crate_packages_the_licences_it_owes() {
                  record there what it redistributes from data-modelling-sdk, or remove the file, \
                  because a notice for material a crate does not carry is a false claim about that \
                  crate's provenance",
+            )),
+            (Some(_), true) | (None, false) => {}
+        }
+
+        match (
+            redistributes_notice(name),
+            packages(&listing, UPSTREAM_NOTICE),
+        ) {
+            (Some(reason), false) => faults.push(format!(
+                "{name} would publish without {UPSTREAM_NOTICE}: it {reason}, and Apache-2.0 \
+                 section 4(d) requires those attribution notices to travel with the bytes rather \
+                 than stay behind in this repository",
+            )),
+            (None, true) => faults.push(format!(
+                "{name} packages {UPSTREAM_NOTICE} but is not listed in NOTICE_REDISTRIBUTORS; \
+                 either record there what it redistributes, or remove the file, because a notice \
+                 for material a crate does not carry is a false claim about that crate's \
+                 provenance",
             )),
             (Some(_), true) | (None, false) => {}
         }
@@ -374,6 +439,17 @@ fn every_crate_licence_is_the_repository_licence() {
         );
     }
 
+    let notice = canonical(UPSTREAM_NOTICE);
+    for (name, _) in NOTICE_REDISTRIBUTORS {
+        let directory = root.join("crates").join(name);
+        compare(
+            name,
+            directory.join(UPSTREAM_NOTICE),
+            UPSTREAM_NOTICE,
+            &notice,
+        );
+    }
+
     assert!(faults.is_empty(), "{}", faults.join("\n"));
 }
 
@@ -412,14 +488,14 @@ fn the_upstream_notice_check_reads_a_listing_in_both_directions() {
     // which is what made the defect invisible, and the upstream notice absent.
     let before = "Cargo.toml\nLICENSE-APACHE\nLICENSE-MIT\nREADME.md\nsrc/lib.rs\n";
     assert!(
-        !packages_the_upstream_notice(before),
+        !packages(before, UPSTREAM_LICENCE),
         "the check should not find the upstream notice in a listing that has only the \
          workspace's own two licences",
     );
 
     let after = "Cargo.toml\nLICENSE-APACHE\nLICENSE-MIT\nLICENSE-MIT-upstream\nREADME.md\n";
     assert!(
-        packages_the_upstream_notice(after),
+        packages(after, UPSTREAM_LICENCE),
         "the check should find the upstream notice in a listing that has it",
     );
 
@@ -427,14 +503,37 @@ fn the_upstream_notice_check_reads_a_listing_in_both_directions() {
     // with `contains` or `starts_with` would read the first as the second and
     // call every crate in the workspace compliant.
     assert!(
-        !packages_the_upstream_notice("Cargo.toml\nLICENSE-MIT\nREADME.md\n"),
+        !packages("Cargo.toml\nLICENSE-MIT\nREADME.md\n", UPSTREAM_LICENCE),
         "the check should not mistake LICENSE-MIT for LICENSE-MIT-upstream",
     );
 
     // And a crate directory holding a file whose name merely starts the same
     // way is not the notice either.
     assert!(
-        !packages_the_upstream_notice("Cargo.toml\nLICENSE-MIT-upstream.md\nREADME.md\n"),
+        !packages(
+            "Cargo.toml\nLICENSE-MIT-upstream.md\nREADME.md\n",
+            UPSTREAM_LICENCE
+        ),
+        "the check should match the notice's name exactly, not as a prefix",
+    );
+
+    // The Apache-2.0 notice is read by the same matcher, and the two must not
+    // stand in for one another: a crate carrying the MIT notice and owing the
+    // Apache one would otherwise read as compliant.
+    let mit_only = "Cargo.toml\nLICENSE-MIT-upstream\nREADME.md\n";
+    assert!(
+        !packages(mit_only, UPSTREAM_NOTICE),
+        "the check should not accept the MIT notice in place of the Apache-2.0 one",
+    );
+    assert!(
+        packages(
+            "Cargo.toml\nNOTICE-ossie-upstream\nREADME.md\n",
+            UPSTREAM_NOTICE
+        ),
+        "the check should find the Apache-2.0 notice in a listing that has it",
+    );
+    assert!(
+        !packages("Cargo.toml\nNOTICE\nREADME.md\n", UPSTREAM_NOTICE),
         "the check should match the notice's name exactly, not as a prefix",
     );
 }
@@ -444,7 +543,7 @@ fn every_crate_that_owes_the_upstream_notice_says_why() {
     // A list entry with an empty reason is a list entry whose failure message
     // would read "it  from data-modelling-sdk", and the reason is the whole
     // value of recording the crate rather than just its name.
-    for (name, reason) in REDISTRIBUTORS {
+    for (name, reason) in REDISTRIBUTORS.into_iter().chain(NOTICE_REDISTRIBUTORS) {
         assert!(
             !reason.trim().is_empty(),
             "{name} is listed as redistributing upstream material with no reason recorded",

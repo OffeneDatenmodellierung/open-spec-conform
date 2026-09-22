@@ -45,10 +45,14 @@ impl Command {
 
 /// The four standards this binary has an adapter for.
 ///
-/// The registry holds five entries. `cads` is catalogued, vendored and
-/// verified like the rest — there is simply no validator for it yet, and
-/// [`crate::codes::NO_ADAPTER_FOR_SPEC`] says so rather than letting a
-/// `--spec cads` run report a clean bill of health it never earned.
+/// The registry holds seven entries. `cads` and the two Ossie entries are
+/// catalogued, vendored and verified like the rest — there is simply no
+/// validator for them yet, and [`crate::codes::NO_ADAPTER_FOR_SPEC`] says so
+/// rather than letting a `--spec cads` run report a clean bill of health it
+/// never earned. The catalogue being wider than this enum is the normal state
+/// of affairs, not a gap waiting to be closed: vendoring a specification and
+/// writing a validator for it are separate pieces of work, and the first is
+/// worth doing on its own.
 ///
 /// Every identifier below is read from the adapter crate's own `SPEC_ID`
 /// constant, never typed out here. `conform-lexicon`'s is `odcl` and not
@@ -277,7 +281,7 @@ impl SpecSummary {
     /// The best upstream link for this entry: its documentation site if one is
     /// recorded, otherwise its repository, otherwise nothing.
     ///
-    /// Nothing is a real answer. Three of the five entries in this
+    /// Nothing is a real answer. Three of the seven entries in this
     /// repository's registry record no homepage, and inventing one would be
     /// the failure the catalogue exists to prevent.
     #[must_use]

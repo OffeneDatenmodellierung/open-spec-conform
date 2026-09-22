@@ -183,7 +183,7 @@ digest, and what re-hashing the bytes just said.
 
 Every provenance field the registry does not record is emitted as JSON `null`.
 Never `""`, never omitted, never filled in with something plausible. Three of
-the five entries in this repository's registry record no licence, and a
+the seven entries in this repository's registry record no licence, and a
 consumer must be able to tell that from the JSON, because "nobody wrote it
 down" is the finding. `provenance_gaps` carries the registry's own list of
 those absences, and a test asserts the two agree.
@@ -240,9 +240,13 @@ file nothing recognises is reported under `CLI002`, never skipped, and paths
 that hold nothing checkable are an error rather than a silence: a file quietly
 ignored is a file everybody believes was checked.
 
-`cads` is catalogued, vendored and verified with the rest, and has no validator
-in this binary. `--spec cads` refuses under `CLI005` and exits 2 rather than
-reporting a clean run over zero documents.
+`cads`, `ossie` and `ossie-dev` are catalogued, vendored and verified with the
+rest, and have no validator in this binary. `--spec cads` refuses under
+`CLI005` and exits 2 rather than reporting a clean run over zero documents, and
+so do the other two. The catalogue being wider than the set of adapters is the
+normal state of affairs — vendoring a specification and writing a validator for
+it are separate pieces of work — which is why `registry list` reports
+`has_validator` per entry instead of leaving a reader to infer it.
 
 ## The console
 
@@ -265,6 +269,13 @@ specification, and one finding in full.
 └───────────────────┴──────────────────────┴───────────────────────────────┘
  [tab] pane  [↑ ↓] move  [u] upstream  [?] keys  [q] quit
 ```
+
+The sketch is scrolled to the top: those are the first five of the registry's
+seven entries, in registry order. A value wider than the column it sits in —
+`ossie-dev` at version `0.2.0.dev0` — is written out in full and pushes its
+row's later columns right, rather than being truncated, because the identifier
+is what a reader types after `--spec` and a truncated one is a value they
+cannot use.
 
 **The upstream link is never more than two keystrokes away.** In practice it is
 zero: the link, the pin and the drift status for whatever is selected are
@@ -309,3 +320,12 @@ crate directory, not only at the repository root, because a `.crate` archive
 contains nothing from above the package root and the tarball is what a consumer
 redistributes. `crates/conform-web/tests/every_crate_ships_its_licence.rs`
 enforces that.
+
+Two more are **Apache-2.0**, from a project that distributes a `NOTICE` file
+with them. Apache-2.0 section 4(d) asks that the attribution notices in such a
+file travel with a redistribution, and the two revisions vendored here changed
+hands between them, so the notice is not the same at both — both are quoted
+verbatim, along with the incubator disclaimer that accompanies the newer one,
+at `NOTICE-ossie-upstream`. It is kept in this crate directory for the same
+reason `LICENSE-MIT-upstream` is, and the same test enforces it. Which schemas
+they are, and which revisions they came from, `specs.toml` records.

@@ -185,10 +185,40 @@ fn one_keystroke_opens_the_full_provenance_record() {
 }
 
 #[test]
+fn a_catalogue_row_keeps_its_columns_apart() {
+    // `{:<6}` is a minimum width and not a maximum, so an identifier wider
+    // than the column it was sized for is written out in full and the version
+    // beside it starts where it ends — no space between them. `ossie-dev` and
+    // `0.2.0.dev0` rendered as `ossie-dev0.2.0.dev0`, one nonsense token where
+    // there should be two values, and nothing failed until somebody looked.
+    //
+    // Derived from the registry rather than written out, because the entry
+    // that triggers this next is the one nobody has added yet.
+    let app = App::new(catalogue_run(), None);
+    let rendered = frame(&app);
+
+    for spec in &app.run().specs {
+        let Some(version) = spec.version.as_deref() else {
+            continue;
+        };
+        assert!(
+            rendered.contains(spec.id.as_str()),
+            "`{}` is not on screen at all, so the assertion below proves nothing",
+            spec.id
+        );
+        assert!(
+            !rendered.contains(&format!("{}{version}", spec.id)),
+            "`{}` and `{version}` are rendered with nothing between them",
+            spec.id
+        );
+    }
+}
+
+#[test]
 fn every_specification_is_reachable_and_carries_its_link() {
     let mut app = App::new(catalogue_run(), None);
     let count = app.run().specs.len();
-    assert_eq!(count, 5);
+    assert_eq!(count, 7);
 
     for _ in 0..count {
         let spec = app.selected_spec().expect("a spec row").clone();
