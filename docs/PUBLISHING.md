@@ -6,8 +6,8 @@ Layout: article
 
 type: runbook
 status: Draft
-version: "0.2"
-last-modified: 2026-09-21
+version: "0.3"
+last-modified: 2026-09-22
 ---
 
 # Publishing to crates.io
@@ -155,6 +155,14 @@ and could go first, last, or any time.
 
 ## What can be verified today, and what cannot
 
+> **This section describes the state before the first release, and that state
+> is past.** Since 2026-09-21, `conform-core` and the four `conform-model-*`
+> crates are on crates.io at `0.1.0`; the eight below them are not. What
+> follows is still the right explanation of *why* a crate cannot be dry-run
+> before its dependencies exist, and the wall it describes now falls away one
+> crate at a time. For what is publishable this minute, ask rather than read:
+> `./tools/publish-status.py $(./tools/publish-order.py)`.
+
 With nothing yet on crates.io:
 
 - **Six crates package cleanly today**, verification build included:
@@ -259,7 +267,10 @@ meaningful whole-workspace check.
 
 ## If a publish fails part-way through
 
-This is the scenario that actually bites, so it gets a written answer.
+This is the scenario that actually bites, so it gets a written answer — and on
+**2026-09-21** it stopped being hypothetical. See
+[The half-published release of 2026-09-21](#the-half-published-release-of-2026-09-21)
+below for what happened and what changed because of it.
 
 Say the sequence reaches `conform-odps` and fails. `conform-core`,
 `conform-registry` and the model crates are on crates.io at `0.1.0` and
@@ -273,10 +284,13 @@ build. Nothing downstream is broken, because nothing downstream exists yet.
 1. **Do not yank the published crates.** Yanking `conform-core 0.1.0` would
    break `conform-registry 0.1.0`, which depends on it and is already public.
    Yank propagates outward as breakage; it does not roll anything back.
-2. **Read the actual error.** Two kinds occur, wanting opposite responses:
-   - *Transient* — a registry timeout, a rate limit, an expired
-     index-propagation wait. Re-dispatch for the same crate; nothing needs
-     fixing.
+2. **Read the actual error.** Three kinds occur, wanting different responses:
+   - *Rate-limited* — crates.io refused because too many **new** crates were
+     created too quickly. The workflow now handles this itself; you only see
+     it if its wait budget ran out. Nothing needs fixing. See
+     [The new-crate rate limit](#the-new-crate-rate-limit).
+   - *Transient* — a registry timeout, or an index-propagation wait.
+     Re-dispatch; nothing needs fixing.
    - *Real* — the verification build failed, `cargo deny` objected, or a
      manifest is wrong. The crate is not publishable as written.
 3. **For a real failure, fix it and publish the same version.** The failing
@@ -290,13 +304,103 @@ build. Nothing downstream is broken, because nothing downstream exists yet.
    version **only** if it is actively harmful, and only *after* its replacement
    is published — yanking first leaves a window in which already-public
    dependants resolve to nothing.
-5. **Resume from where it stopped.** Dispatch with `crates` set to the
-   remaining names; they are reordered into dependency order automatically and
-   anything unpublishable is refused by name.
+5. **Resume by dispatching again with `crates: all`.** Both loops ask the
+   crates.io index whether each exact `name@version` is already there, and skip
+   it if so. Re-dispatching does not republish anything and cannot fail because
+   a previous run succeeded; it picks up whatever is outstanding. Naming the
+   remaining crates individually still works and is equivalent — `all` is
+   simply the answer that cannot be got wrong.
 
 What makes this recoverable is that the crates are independently versioned
 (FR-011). A workspace on one shared version would have to burn one number for
 all twelve.
+
+### The new-crate rate limit
+
+crates.io limits how fast **new crate names** can be created — not how fast
+versions of an existing crate can be published. From crates.io's own
+`LimitedAction::PublishNew`: a burst of **5**, refilling at **one every 10
+minutes**. `PublishUpdate`, which is what every release after the first one
+does, is a burst of 30 refilling once a minute and will never be felt here.
+
+So the *first* release of this workspace is the one release that is guaranteed
+to hit it: thirteen new names, and only five may be created before the
+throttle starts. A full first release from an empty bucket needs roughly **80
+minutes of waiting**, spread across the last eight crates.
+
+The refusal is an HTTP 429 whose body names the moment the next crate is due:
+
+```
+You have published too many new crates in a short period of time. Please try
+again after Mon, 22 Sep 2026 13:24:45 GMT and see
+https://crates.io/docs/rate-limits for more details.
+```
+
+`cargo` prints that sentence, and `release.yml` reads the time out of it and
+waits until then rather than guessing at an interval — the bucket is often
+part-refilled already, so guessing over-waits. The `max_wait_minutes` dispatch
+input bounds how long the whole run may spend doing this (default **90**,
+enough for a full first release). When the budget runs out the run **fails**
+and names what is left, rather than waiting past its own job timeout and being
+killed with nothing printed.
+
+Nothing about a rate limit means anything is wrong with the tree. The only
+decision it asks for is whether to wait or to come back later, and coming back
+later is free now that re-dispatching resumes.
+
+### The half-published release of 2026-09-21
+
+The first real release run published five crates — `conform-core` and the four
+`conform-model-*` crates — and was then refused on the sixth by the new-crate
+limit, exactly as the burst of five predicts.
+
+Every rerun after that failed **instantly**, on the first crate, with:
+
+```
+error: crate conform-core@0.1.0 already exists on crates.io index
+Process completed with exit code 101
+```
+
+Both loops walked the full computed sequence and ran `cargo publish`
+unconditionally, so the first already-published crate ended the run before
+reaching any of the eight that still needed creating. Five crates were
+permanent, eight were uncreatable, and there was no dispatch that made
+progress — naming only the missing crates would have worked, but the
+documented recovery said `crates: all`, and `all` could no longer run at all.
+
+Three things changed, and they are worth stating as properties rather than as
+a changelog:
+
+- **The index is the authority on what is published.** Before each crate,
+  `tools/publish-status.py` asks the sparse index whether that exact
+  `name@version` is present, and the crate is skipped if it is. It is *not*
+  decided by matching cargo's error text: `already exists` is a plausible
+  substring of failures that mean something else, and a loop that reads "the
+  word appeared" as "carry on" reports releases finished that are not. Only an
+  exact version match skips — a crate whose name is taken but whose version is
+  new still publishes. A yanked version counts as published, because the number
+  is spent either way.
+- **A rate limit is waited out, not failed on.** Described above.
+- **A green tick means finished.** The publish step ends by asking the index
+  what is actually there and printing three lists — PUBLISHED THIS RUN,
+  SKIPPED (already on index), STILL MISSING — and **fails if anything asked
+  for is missing**. The previous workflow would exit 0 having published
+  nothing at all.
+
+The dry run skips already-published crates for the same reason, and that makes
+it *more* useful rather than less: this tree cannot change a tarball that has
+already shipped, so re-verifying one proves nothing. What a dry run is being
+asked in a half-published workspace is whether what *remains* is fit to
+publish, and that is now exactly what it checks.
+
+You can ask the same question by hand at any time:
+
+```console
+$ ./tools/publish-status.py $(./tools/publish-order.py)
+skip     conform-core        0.1.0  conform-core@0.1.0 is already on the crates.io index
+...
+publish  conform-registry    0.1.0  conform-registry is not on the crates.io index
+```
 
 ## What the registry says, not what the source says
 
