@@ -12,7 +12,7 @@
 //! licence of these bytes" into "the licence is the empty string". This test
 //! is what makes that keystroke fail.
 //!
-//! Three of the five entries in this repository's registry record no licence
+//! Three of the seven entries in this repository's registry record no licence
 //! and three record no homepage, so the corpus is real rather than contrived.
 
 mod support;
@@ -26,7 +26,7 @@ fn an_unrecorded_field_is_json_null_and_never_an_empty_string() {
     assert_eq!(code, 0);
 
     let specs = json["specs"].as_array().expect("specs is an array");
-    assert_eq!(specs.len(), 5, "the registry holds five entries");
+    assert_eq!(specs.len(), 7, "the registry holds seven entries");
 
     let mut nulls = 0usize;
     for spec in specs {
@@ -165,7 +165,7 @@ fn the_human_catalogue_says_not_recorded_rather_than_leaving_a_blank() {
     }
     assert!(
         labelled >= 25,
-        "only {labelled} labelled provenance lines were seen across five entries"
+        "only {labelled} labelled provenance lines were seen across seven entries"
     );
 }
 

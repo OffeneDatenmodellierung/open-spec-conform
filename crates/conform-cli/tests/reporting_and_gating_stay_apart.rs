@@ -89,6 +89,8 @@ fn a_run_that_could_not_happen_exits_two() {
     for args in [
         vec!["validate", document.as_str(), "--spec", "nonesuch"],
         vec!["validate", document.as_str(), "--spec", "cads"],
+        vec!["validate", document.as_str(), "--spec", "ossie"],
+        vec!["validate", document.as_str(), "--spec", "ossie-dev"],
     ] {
         let output = conform(&args);
         assert_eq!(output.code, 2, "{}", output.stdout);
@@ -99,17 +101,64 @@ fn a_run_that_could_not_happen_exits_two() {
     assert_eq!(missing.code, 2, "{}", missing.stdout);
 }
 
+/// Every catalogued specification this binary has no adapter for.
+///
+/// Listed rather than derived, and deliberately so: `Standard::from_spec_id`
+/// is the very function under test, so asking it which entries lack an adapter
+/// would make this test agree with whatever that function currently says. A
+/// specification that grows a validator has to be deleted from here by hand,
+/// which is the same deliberate act `odcl` already required once.
+const CATALOGUED_WITHOUT_AN_ADAPTER: [&str; 3] = ["cads", "ossie", "ossie-dev"];
+
 #[test]
 fn a_catalogued_specification_with_no_validator_is_said_so_rather_than_passed() {
-    // `cads` is in the registry and has no adapter here. The dangerous answer
-    // is a clean run over zero documents; the honest one is a refusal that
-    // names the gap.
-    let output = conform(&["validate", &faulty(), "--spec", "cads"]);
-    assert_eq!(output.code, 2);
-    assert!(output.stdout.contains("CLI005"));
+    // Each of these is in the registry and has no adapter here. The dangerous
+    // answer is a clean run over zero documents; the honest one is a refusal
+    // that names the gap.
+    for id in CATALOGUED_WITHOUT_AN_ADAPTER {
+        let output = conform(&["validate", &faulty(), "--spec", id]);
+        assert_eq!(output.code, 2, "`--spec {id}`: {}", output.stdout);
+        assert!(
+            output.stdout.contains("CLI005"),
+            "`--spec {id}` did not refuse under CLI005: {}",
+            output.stdout
+        );
 
-    let (json, _) = conform_json(&["registry", "list", "--spec", "cads"]);
-    assert_eq!(json["specs"][0]["has_validator"], serde_json::json!(false));
+        let (json, _) = conform_json(&["registry", "list", "--spec", id]);
+        assert_eq!(
+            json["specs"][0]["id"],
+            serde_json::json!(id),
+            "`registry list --spec {id}` selected a different entry"
+        );
+        assert_eq!(
+            json["specs"][0]["has_validator"],
+            serde_json::json!(false),
+            "`{id}` is advertised as having a validator it does not have"
+        );
+    }
+}
+
+#[test]
+fn a_catalogued_specification_without_an_adapter_is_still_catalogued_and_verified() {
+    // The other half of the refusal above, and the reason the refusal is not
+    // simply "unknown specification": these entries are vendored, hashed and
+    // re-verified like every other. What is missing is an adapter, and the
+    // console has to show both facts at once or `--spec ossie` reads as "we
+    // have never heard of it".
+    let (json, code) = conform_json(&["registry", "verify"]);
+    assert_eq!(code, 0);
+
+    for id in CATALOGUED_WITHOUT_AN_ADAPTER {
+        let spec = json["specs"]
+            .as_array()
+            .expect("specs is an array")
+            .iter()
+            .find(|spec| spec["id"] == serde_json::json!(id))
+            .unwrap_or_else(|| panic!("`{id}` is not in the catalogue at all"));
+
+        assert_eq!(spec["vendored"]["verify"], serde_json::json!("matched"));
+        assert_eq!(spec["has_validator"], serde_json::json!(false));
+    }
 }
 
 #[test]

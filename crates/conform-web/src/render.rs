@@ -330,7 +330,7 @@ fn watch_row(out: &mut String, card: &SpecCard) {
 ///
 /// [`SpecSummary::upstream_link`] answers "the best link for this entry" by
 /// falling back from the documentation site to the repository, and three of
-/// the five entries in this repository's registry take that fallback because
+/// the seven entries in this repository's registry take that fallback because
 /// no documentation site is recorded for them. A cell that printed the URL and
 /// stopped would be hiding exactly that: a reader would see a link under
 /// *canonical upstream* and have no way to tell a steward's published

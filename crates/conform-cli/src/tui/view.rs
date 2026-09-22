@@ -163,18 +163,39 @@ fn spec_item<'a>(app: &App, scope: Scope, spec: &'a SpecSummary) -> ListItem<'a>
             Style::new().fg(verify_colour(spec)),
         ),
         Span::styled(
-            format!("{:<6}", for_terminal(&spec.id)),
+            column(&for_terminal(&spec.id), 6),
             Style::new().add_modifier(Modifier::BOLD),
         ),
-        Span::raw(format!(
-            "{:<8}",
-            for_terminal(spec.version.as_deref().unwrap_or("—"))
+        Span::raw(column(
+            &for_terminal(spec.version.as_deref().unwrap_or("—")),
+            8,
         )),
         Span::styled(
             severity_label(worst),
             Style::new().fg(severity_colour(worst)),
         ),
     ]))
+}
+
+/// One column of a catalogue row: `text`, left-aligned, and always followed by
+/// something.
+///
+/// A plain `{:<6}` is a minimum width, not a maximum, so a value longer than
+/// its field is written out in full and the next column starts where it ends —
+/// with no space between them. `ossie-dev` beside `0.2.0.dev0` renders as
+/// `ossie-dev0.2.0.dev0`, which reads as one nonsense token and is the kind of
+/// defect that only appears when a catalogue grows an entry wider than the one
+/// somebody sized the column for.
+///
+/// Padding instead of truncating, deliberately. The identifier is what a
+/// reader types after `--spec`, and a truncated one is a value they cannot
+/// use; a row one column wider than its neighbours is merely untidy.
+fn column(text: &str, width: usize) -> String {
+    if text.chars().count() >= width {
+        format!("{text} ")
+    } else {
+        format!("{text:<width$}")
+    }
 }
 
 /// The upstream summary, on screen without a keystroke.

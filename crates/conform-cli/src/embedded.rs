@@ -97,6 +97,14 @@ pub const ARTEFACTS: &[(&str, &str)] = &[
         include_str!("../embedded/schemas/cads.schema.json"),
     ),
     (
+        "schemas/ossie-json-schema-0.1.1.json",
+        include_str!("../embedded/schemas/ossie-json-schema-0.1.1.json"),
+    ),
+    (
+        "schemas/ossie-json-schema-0.2.0.dev0.json",
+        include_str!("../embedded/schemas/ossie-json-schema-0.2.0.dev0.json"),
+    ),
+    (
         "crates/conform-okf/tests/fixtures/okf-upstream/SHA256SUMS",
         include_str!("../embedded/crates/conform-okf/tests/fixtures/okf-upstream/SHA256SUMS"),
     ),

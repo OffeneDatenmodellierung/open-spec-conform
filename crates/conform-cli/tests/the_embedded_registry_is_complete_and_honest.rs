@@ -3,8 +3,8 @@
 //! # The three things that can quietly go wrong
 //!
 //! **The embedded catalogue can fall behind the repository's.** The bytes are
-//! reached through symbolic links, so they cannot drift on their own — but a
-//! *sixth* specification added to `specs.toml` without a link beside it would
+//! reached through symbolic links, so they cannot drift on their own — but an
+//! *eighth* specification added to `specs.toml` without a link beside it would
 //! leave an installed binary reporting a catalogue entry whose artefact it does
 //! not carry. [`every_registry_entry_has_its_bytes_embedded`] is what stops
 //! that reaching a release.
@@ -45,7 +45,7 @@ fn every_registry_entry_has_its_bytes_embedded() {
     // Non-vacuity: a registry that parsed to nothing would make every loop
     // below pass without examining anything.
     assert!(
-        registry.entries().len() >= 5,
+        registry.entries().len() >= 7,
         "the embedded registry holds {} entries, which is fewer than this repository vendors — \
          the wrong bytes were embedded",
         registry.entries().len(),

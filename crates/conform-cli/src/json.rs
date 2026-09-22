@@ -26,7 +26,7 @@
 //!
 //! Every optional provenance field is emitted as JSON `null` when the registry
 //! does not record it — never as `""`, never omitted, and never filled in with
-//! something plausible. Three of the five entries in this repository's
+//! something plausible. Three of the seven entries in this repository's
 //! registry record no homepage and three record no licence; a consumer must be
 //! able to tell that from the JSON, because "nobody wrote it down" is the
 //! finding. Substituting an empty string would turn a recorded unknown into an

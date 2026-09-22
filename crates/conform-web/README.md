@@ -54,7 +54,7 @@ rule.
 
 ## Absence is rendered as absence
 
-`specs.toml` deliberately omits `licence` on three of five entries and
+`specs.toml` deliberately omits `licence` on three of seven entries and
 `homepage` on three, and each entry's notes say what was looked at and what it
 did not say. The page shows every such gap as `(not recorded)` — **the
 console's words**, lifted out of `conform-cli`'s own rendering by the test
@@ -63,7 +63,7 @@ an empty string or a plausible default.
 
 The same honesty applies where a value was *substituted*.
 `SpecSummary::upstream_link` falls back from the documentation site to the
-repository, and three of the five entries take that fallback; the upstream
+repository, and three of the seven entries take that fallback; the upstream
 watch says which field it read, because a cell that printed the URL and stopped
 would hide exactly the gap the catalogue exists to show.
 
