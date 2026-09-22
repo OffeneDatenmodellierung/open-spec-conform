@@ -1,8 +1,4 @@
 //! Do the bytes still say what the registry says they say?
-//!
-//! Recording a SHA-256 and never checking it is a comfort, not a control.
-//! This module is the check: re-hash every vendored artefact and report each
-//! outcome — matched, drifted, missing, unreadable — as a diagnostic.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -11,43 +7,49 @@ use conform_core::{ConformanceReport, Diagnostic, DocumentId, Location, Severity
 use sha2::{Digest, Sha256};
 
 use crate::codes;
-use crate::entry::SpecEntry;
+use crate::entry::PinnedVersion;
 use crate::registry::{Registry, spec_ref};
 
 impl Registry {
-    /// Re-hash every vendored artefact and compare it to the recorded digest.
-    ///
-    /// Touches the filesystem, and only the filesystem: there is no network
-    /// access anywhere in this crate, so this answers "have our bytes changed"
-    /// and never "has upstream moved" (plan §3.3 — drift against upstream is
-    /// reported by a scheduled poll, and does not gate a build).
-    ///
-    /// Every entry produces exactly one diagnostic, including the ones that
-    /// pass. A silent success and a skipped check are indistinguishable
-    /// otherwise, and this crate exists because that distinction went missing
-    /// once already.
+    /// Re-hash every vendored artefact of every version and compare it to the
+    /// recorded digest.
     #[must_use]
     pub fn verify(&self) -> ConformanceReport {
         self.entries()
             .iter()
             .enumerate()
-            .map(|(index, entry)| self.verify_entry(index, entry))
+            .flat_map(|(entry_index, entry)| {
+                entry
+                    .versions
+                    .iter()
+                    .enumerate()
+                    .map(move |(version_index, version)| {
+                        self.verify_version(entry_index, version_index, version)
+                    })
+            })
             .collect()
     }
 
-    /// Re-hash one entry's artefact. See [`verify`](Registry::verify).
-    ///
-    /// Reads the bytes, then hands them to [`verify_bytes`] — which is where
-    /// the comparison itself lives, so that a caller holding the bytes
-    /// already, without a filesystem to read them from, reaches the same
-    /// verdict by the same code rather than by a second implementation of it.
+    /// Re-hash one version's artefact.
     #[must_use]
-    pub fn verify_entry(&self, index: usize, entry: &SpecEntry) -> Diagnostic {
-        let path = self.artefact_path(entry);
-        // The artefact is the document a drift diagnostic is *about*; the
-        // pointer says which registry field disagrees with it.
+    pub fn verify_version(
+        &self,
+        entry_index: usize,
+        version_index: usize,
+        version: &PinnedVersion,
+    ) -> Diagnostic {
+        let path = self.artefact_path(version);
         let location = Location::document(path.display().to_string())
-            .with_pointer(format!("/spec/{index}/sha256"));
+            .with_pointer(format!("/spec/{entry_index}/pin/{version_index}/sha256"));
+
+        let entry_id = self
+            .entries()
+            .get(entry_index)
+            .map_or("?", |e| e.id.as_str());
+        let label = version
+            .version
+            .as_deref()
+            .map_or_else(|| entry_id.to_owned(), |v| format!("{entry_id}@{v}"));
 
         let bytes = match fs::read(&path) {
             Ok(bytes) => bytes,
@@ -56,13 +58,13 @@ impl Registry {
                     codes::ARTEFACT_MISSING,
                     location,
                     format!(
-                        "`{}` records `vendored_path = \"{}\"`, and there is no such file",
-                        entry.id, entry.vendored_path
+                        "`{label}` records `vendored_path = \"{}\"`, and there is no such file",
+                        version.vendored_path
                     ),
                 )
                 .with_help(
-                    "restore the artefact, or remove the entry — a registry entry for bytes that \
-                     are not here describes nothing",
+                    "restore the artefact, or remove the version — a registry entry for bytes \
+                     that are not here describes nothing",
                 )
                 .with_spec_ref(spec_ref());
             }
@@ -70,54 +72,41 @@ impl Registry {
                 return Diagnostic::error(
                     codes::ARTEFACT_UNREADABLE,
                     location,
-                    format!("cannot read the artefact for `{}`: {error}", entry.id),
+                    format!("cannot read the artefact for `{label}`: {error}"),
                 )
                 .with_spec_ref(spec_ref());
             }
         };
 
-        compare(entry, &bytes, location)
+        compare(&label, version, &bytes, location)
     }
 }
 
-/// Re-hash bytes already in hand against what the registry records for an
-/// entry.
-///
-/// [`Registry::verify_entry`] is this function with a `fs::read` in front of
-/// it. It is public and separate because not every holder of a vendored
-/// artefact has a filesystem to read it from: a binary that embedded the bytes
-/// at compile time, so that it still works when installed away from the
-/// repository, has them already — and must reach the *same* verdict, under the
-/// same code, with the same wording.
-///
-/// Two implementations of "re-hash and compare" would be one implementation
-/// and one place for the check to quietly become decoration. So there is one,
-/// and this is it.
-///
-/// `document` is what the resulting diagnostic is *about* — a path for the
-/// on-disk caller, and whatever names the bytes for an embedding one.
+/// Re-hash bytes already in hand against what the registry records for a
+/// pinned version.
 #[must_use]
 pub fn verify_bytes(
-    index: usize,
-    entry: &SpecEntry,
+    entry_index: usize,
+    version_index: usize,
+    label: &str,
+    version: &PinnedVersion,
     bytes: &[u8],
     document: impl Into<DocumentId>,
 ) -> Diagnostic {
-    let location = Location::document(document).with_pointer(format!("/spec/{index}/sha256"));
-    compare(entry, bytes, location)
+    let location = Location::document(document)
+        .with_pointer(format!("/spec/{entry_index}/pin/{version_index}/sha256"));
+    compare(label, version, bytes, location)
 }
 
-/// The comparison, once.
-fn compare(entry: &SpecEntry, bytes: &[u8], location: Location) -> Diagnostic {
+fn compare(label: &str, version: &PinnedVersion, bytes: &[u8], location: Location) -> Diagnostic {
     let actual = sha256_hex(bytes);
-    if actual == entry.sha256.trim() {
+    if actual == version.sha256.trim() {
         Diagnostic::new(
             Severity::Info,
             codes::ARTEFACT_VERIFIED,
             location,
             format!(
-                "`{}` matches its recorded digest ({} bytes)",
-                entry.id,
+                "`{label}` matches its recorded digest ({} bytes)",
                 bytes.len()
             ),
         )
@@ -127,9 +116,8 @@ fn compare(entry: &SpecEntry, bytes: &[u8], location: Location) -> Diagnostic {
             codes::SHA256_MISMATCH,
             location,
             format!(
-                "`{}` hashes to {actual}, and the registry records {}",
-                entry.id,
-                entry.sha256.trim()
+                "`{label}` hashes to {actual}, and the registry records {}",
+                version.sha256.trim()
             ),
         )
         .with_help(
@@ -156,9 +144,6 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {
-        // Lower-case, fixed width: the digest is compared as text against the
-        // registry, so its spelling is part of the format. Writing into a
-        // `String` cannot fail, so the result is deliberately discarded.
         let _ = write!(hex, "{byte:02x}");
     }
     hex

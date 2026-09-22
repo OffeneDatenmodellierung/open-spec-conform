@@ -59,9 +59,11 @@ pub struct Common {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Restrict everything to one registry entry, by id — `odcs`, `odps`,
-    /// `okf`, `odcl`.
-    #[arg(long, global = true, value_name = "ID")]
+    /// Restrict everything to one registry entry — `odcs`, `odps`, `okf`,
+    /// `odcl`, `cads`, `ossie`. Append `@version` to select a specific
+    /// version: `--spec ossie@0.2.0.dev0`. Without `@version` the newest
+    /// non-draft version is used.
+    #[arg(long, global = true, value_name = "ID[@VERSION]")]
     pub spec: Option<String>,
 
     /// What fails the run. Default: nothing.

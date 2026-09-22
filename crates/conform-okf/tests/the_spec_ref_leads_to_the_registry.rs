@@ -35,13 +35,14 @@ fn the_spec_this_crate_stamps_on_every_diagnostic_is_a_registry_entry() {
         .find(conform_okf::SPEC_ID)
         .unwrap_or_else(|| panic!("specs.toml has no `{}` entry", conform_okf::SPEC_ID));
 
+    let version = entry.default_version();
     assert_eq!(
-        entry.version.as_deref(),
+        version.version.as_deref(),
         Some(conform_okf::OKF_VERSION),
         "this crate implements a version of the specification the registry does not describe"
     );
     assert!(
-        entry.is_pinned(),
+        version.is_pinned(),
         "the `okf` entry records no immutable upstream revision, so nothing can say which \
          revision of the corpus these rules were written against"
     );
@@ -54,7 +55,8 @@ fn the_entry_pins_this_crate_s_fixture_manifest() {
     let registry = registry();
     let entry = registry.find(conform_okf::SPEC_ID).expect("the okf entry");
 
-    let recorded = repository_root().join(&entry.vendored_path);
+    let version = entry.default_version();
+    let recorded = repository_root().join(&version.vendored_path);
     let manifest =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/okf-upstream/SHA256SUMS");
 
@@ -83,7 +85,9 @@ fn the_pinned_manifest_still_hashes_to_what_the_registry_records() {
         .find(|(_, entry)| entry.id == conform_okf::SPEC_ID)
         .expect("the okf entry");
 
-    let diagnostic = registry.verify_entry(index, entry);
+    let vi = entry.default_version_index();
+    let version = entry.default_version();
+    let diagnostic = registry.verify_version(index, vi, version);
     assert_eq!(
         diagnostic.severity,
         Severity::Info,

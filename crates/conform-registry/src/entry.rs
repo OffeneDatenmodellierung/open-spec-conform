@@ -1,38 +1,27 @@
-//! One registry entry: a vendored artefact and everything known about where it
-//! came from.
+//! One registry entry: a standard and its pinned versions.
 
 use serde::Deserialize;
 
-/// What a registry entry records about one vendored specification artefact.
+/// What a registry entry records about one vendored specification.
 ///
-/// The fields split into three groups, and the split is the point of the type:
+/// The fields split into two groups:
 ///
-/// - **Identity** — [`id`](Self::id), [`name`](Self::name). Always present.
-/// - **Custody** — [`vendored_path`](Self::vendored_path),
-///   [`sha256`](Self::sha256), [`fetched_at`](Self::fetched_at). Always
-///   present: these are facts about bytes in this repository, so there is
-///   never an excuse for not knowing them.
-/// - **Provenance** — [`homepage`](Self::homepage),
-///   [`repository`](Self::repository), [`steward`](Self::steward),
-///   [`licence`](Self::licence), [`pinned_ref`](Self::pinned_ref). Every one
-///   of these is optional, because they are facts about *upstream* and
-///   upstream sometimes genuinely does not record them.
+/// - **Identity** — [`id`](Self::id), [`name`](Self::name),
+///   [`homepage`](Self::homepage), [`repository`](Self::repository),
+///   [`steward`](Self::steward), [`licence`](Self::licence). These describe the
+///   specification itself and are shared across all pinned versions of it.
+///
+/// - **Pinned versions** — [`versions`](Self::versions). Each is one vendored
+///   artefact at one immutable upstream revision, carrying its own
+///   [`vendored_path`](PinnedVersion::vendored_path),
+///   [`sha256`](PinnedVersion::sha256), [`pinned_ref`](PinnedVersion::pinned_ref)
+///   and [`poll`](PinnedVersion::poll).
 ///
 /// Optional does not mean unremarked. [`Registry::validate`](crate::Registry::validate)
 /// raises a diagnostic for each absent provenance field, and an entry that has
 /// any absence at all must carry [`notes`](Self::notes) explaining it — an
-/// unexplained gap is an error. Omitting a field is therefore a way to record
-/// "we do not know", never a way to stay quiet about it. Writing a plausible
-/// guess into the field instead is the failure this whole crate exists to make
-/// hard to commit.
-///
-/// The fields are public: this is a record, and an accessor per field would
-/// buy nothing. Adding a field is a breaking change, which is the right price.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-// A misspelled key is the exact silent-drift failure this crate exists to
-// prevent: `sha_256 = "…"` deserialized leniently would leave the real
-// `sha256` missing rather than say so.
-#[serde(deny_unknown_fields)]
+/// unexplained gap is an error.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecEntry {
     /// Stable, short identifier for the specification, unique within one
     /// registry. This is what a `SpecRef` on a diagnostic points at.
@@ -41,51 +30,96 @@ pub struct SpecEntry {
     /// The specification's full name, as its steward writes it.
     pub name: String,
 
-    /// The version of the specification these bytes describe, when it is
-    /// known. Distinct from [`pinned_ref`](Self::pinned_ref): the version is
-    /// what the document *says it is*, the pinned ref is the immutable
-    /// upstream coordinate the bytes were taken from.
-    #[serde(default)]
-    pub version: Option<String>,
-
     /// Canonical human-facing documentation for the specification.
-    #[serde(default)]
     pub homepage: Option<String>,
 
     /// Source repository the artefact is published from.
-    #[serde(default)]
     pub repository: Option<String>,
 
     /// The organisation or project that maintains the specification.
-    #[serde(default)]
     pub steward: Option<String>,
 
     /// The licence the artefact is published under, as an SPDX identifier
     /// where one applies.
-    ///
-    /// Absent means *not recorded anywhere we could check*, which is a real
-    /// and reportable state — vendoring bytes whose licence nobody wrote down
-    /// is a problem that only gets harder to fix with age.
-    #[serde(default)]
     pub licence: Option<String>,
+
+    /// Anything a reader needs in order to trust the entry at the standard
+    /// level: shared provenance facts, why a field is absent.
+    pub notes: Option<String>,
+
+    /// One or more pinned versions of this specification.
+    pub versions: Vec<PinnedVersion>,
+}
+
+impl SpecEntry {
+    /// The provenance fields this entry's identity does not record, by name,
+    /// in a stable order.
+    #[must_use]
+    pub fn provenance_gaps(&self) -> Vec<&'static str> {
+        [
+            ("homepage", self.homepage.as_ref()),
+            ("repository", self.repository.as_ref()),
+            ("steward", self.steward.as_ref()),
+            ("licence", self.licence.as_ref()),
+        ]
+        .into_iter()
+        .filter(|(_, value)| value.is_none_or(|v| v.trim().is_empty()))
+        .map(|(field, _)| field)
+        .collect()
+    }
+
+    /// The default version: the first non-draft version in file order, or the
+    /// first version if all are drafts.
+    ///
+    /// "Draft" is detected by common pre-release markers in the version string
+    /// (`dev`, `alpha`, `beta`, `rc`, `pre`, `SNAPSHOT`). A version with no
+    /// version string at all is not considered a draft.
+    #[must_use]
+    pub fn default_version(&self) -> &PinnedVersion {
+        self.versions
+            .iter()
+            .find(|v| !v.is_draft())
+            .unwrap_or(&self.versions[0])
+    }
+
+    /// The index of the default version within [`versions`](Self::versions).
+    #[must_use]
+    pub fn default_version_index(&self) -> usize {
+        self.versions
+            .iter()
+            .position(|v| !v.is_draft())
+            .unwrap_or(0)
+    }
+
+    /// The version with this version string, if the entry carries one.
+    #[must_use]
+    pub fn find_version(&self, version: &str) -> Option<&PinnedVersion> {
+        self.versions.iter().find(|v| {
+            v.version
+                .as_deref()
+                .is_some_and(|vs| vs.trim() == version.trim())
+        })
+    }
+}
+
+/// One pinned version of a specification: a vendored artefact and the facts
+/// about where it came from.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PinnedVersion {
+    /// The version of the specification these bytes describe.
+    #[serde(default)]
+    pub version: Option<String>,
 
     /// The immutable upstream coordinate these bytes were taken from: a
     /// release tag, a version identifier, or a commit SHA.
     ///
-    /// Never a moving pointer. `latest`, `main` and `HEAD` name whatever
-    /// upstream happens to hold today, so a copy pinned to one of them cannot
-    /// be checked against anything — which is precisely the defect that
-    /// motivated this crate. [`Registry::validate`](crate::Registry::validate)
-    /// rejects them.
+    /// Never a moving pointer.
     #[serde(default)]
     pub pinned_ref: Option<String>,
 
     /// Where the vendored bytes live, relative to the directory holding the
     /// registry file.
-    ///
-    /// Relative on purpose: an absolute path, or one that climbs out with
-    /// `..`, describes a file that only exists on one machine, and a
-    /// provenance record nobody else can verify is not a provenance record.
     pub vendored_path: String,
 
     /// SHA-256 of the vendored bytes, lower-case hex.
@@ -99,18 +133,14 @@ pub struct SpecEntry {
     #[serde(default)]
     pub poll: Option<Poll>,
 
-    /// Anything a reader needs in order to trust the entry: which evidence
-    /// dated the artefact, why a provenance field is absent, what is known to
-    /// be uncertain.
-    ///
-    /// Mandatory in practice for any entry with a gap in it — see the type
-    /// documentation.
+    /// Version-specific notes: which evidence dated this artefact, what is
+    /// known to be uncertain about it.
     #[serde(default)]
     pub notes: Option<String>,
 }
 
-impl SpecEntry {
-    /// Whether this entry records an immutable upstream pin.
+impl PinnedVersion {
+    /// Whether this version records an immutable upstream pin.
     #[must_use]
     pub fn is_pinned(&self) -> bool {
         self.pinned_ref
@@ -118,47 +148,33 @@ impl SpecEntry {
             .is_some_and(|r| !r.trim().is_empty() && !is_moving_ref(r))
     }
 
-    /// The provenance fields this entry does not record, by name, in a stable
-    /// order.
-    ///
-    /// The list a reader should be shown before deciding whether to trust the
-    /// bytes. Empty means every provenance question has an answer.
+    /// Whether this version string looks like a pre-release or development
+    /// snapshot.
     #[must_use]
-    pub fn provenance_gaps(&self) -> Vec<&'static str> {
-        [
-            ("homepage", self.homepage.as_ref()),
-            ("repository", self.repository.as_ref()),
-            ("steward", self.steward.as_ref()),
-            ("licence", self.licence.as_ref()),
-            ("pinned_ref", self.pinned_ref.as_ref()),
-        ]
-        .into_iter()
-        .filter(|(_, value)| value.is_none_or(|v| v.trim().is_empty()))
-        .map(|(field, _)| field)
-        .collect()
+    pub fn is_draft(&self) -> bool {
+        self.version.as_deref().is_some_and(is_draft_version)
     }
 }
 
+/// Whether a version string looks like a pre-release or development snapshot.
+fn is_draft_version(version: &str) -> bool {
+    let lower = version.to_ascii_lowercase();
+    let markers = ["dev", "alpha", "beta", ".rc", "-rc", "pre", "snapshot"];
+    markers.iter().any(|marker| lower.contains(marker))
+}
+
 /// How to ask upstream whether the pinned artefact has been superseded.
-///
-/// Drift detection reports; it never gates. An upstream release is news, not a
-/// defect in the pull request that happens to be open when it lands, so
-/// nothing in this crate performs network access and nothing here can fail a
-/// build (plan §3.3).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Poll {
     /// The URL to ask.
     pub endpoint: String,
 
-    /// How to interpret the endpoint: `github-release`, `github-tag`,
-    /// `github-commit`, `http-etag` or `manual`. Free-form here; the poller
-    /// that eventually reads it owns the vocabulary.
+    /// How to interpret the endpoint.
     #[serde(default)]
     pub method: Option<String>,
 
-    /// Which field of the response carries the upstream ref to compare
-    /// against [`SpecEntry::pinned_ref`].
+    /// Which field of the response carries the upstream ref to compare.
     #[serde(default)]
     pub field: Option<String>,
 
@@ -169,14 +185,6 @@ pub struct Poll {
 
 /// Refs that name "whatever upstream holds right now" rather than one
 /// immutable revision.
-///
-/// `latest` is the one that has already cost us — a vendored schema named for
-/// it, with no version, no source URL and no way to detect that upstream had
-/// moved. The rest are the same mistake wearing different clothes, and they
-/// are listed here so the rule generalises instead of fixing one filename.
-///
-/// Matching is case-insensitive and ignores surrounding whitespace, because
-/// `Latest` and `" latest "` are the same defect.
 pub const MOVING_REFS: &[&str] = &[
     "latest", "head", "main", "master", "trunk", "default", "stable", "current", "edge", "tip",
     "release", "dev", "next",

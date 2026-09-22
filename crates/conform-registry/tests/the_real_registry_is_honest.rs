@@ -148,14 +148,17 @@ fn the_rules_are_a_validator_like_any_other() {
     );
 }
 
-/// Every entry pins to an immutable revision, and says which.
+/// Every pinned version has an immutable upstream revision.
 #[test]
-fn every_entry_is_pinned() {
+fn every_version_is_pinned() {
     for entry in support::real_registry().entries() {
-        assert!(
-            entry.is_pinned(),
-            "`{}` records no immutable upstream revision",
-            entry.id
-        );
+        for version in &entry.versions {
+            assert!(
+                version.is_pinned(),
+                "`{}` version {:?} records no immutable upstream revision",
+                entry.id,
+                version.version,
+            );
+        }
     }
 }

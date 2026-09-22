@@ -10,52 +10,134 @@ use serde::Deserialize;
 use toml::Spanned;
 
 use crate::codes;
-use crate::entry::SpecEntry;
+use crate::entry::{PinnedVersion, Poll, SpecEntry};
 
-/// The registry file format version this crate understands.
+/// The registry file format versions this crate understands.
 ///
-/// A file declaring anything else is refused rather than read optimistically:
-/// a provenance record half-understood is worse than one not read at all.
-pub const SUPPORTED_SCHEMA_VERSION: u32 = 1;
+/// Version 1 is the original flat format (one `[[spec]]` per version).
+/// Version 2 introduced `[[spec.pin]]` for multiple pinned versions per
+/// standard.
+pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, 2];
 
 /// The reference every diagnostic from this crate is raised under.
 #[must_use]
 pub fn spec_ref() -> SpecRef {
-    SpecRef::new("conform-registry/specs.toml").with_version(SUPPORTED_SCHEMA_VERSION.to_string())
+    SpecRef::new("conform-registry/specs.toml").with_version("2".to_string())
 }
 
-/// The deserialization target. Separate from [`Registry`] because the public
-/// type carries things the file does not: where it was loaded from, and which
-/// line each entry starts on.
+// ── Private deserialization types ──────────────────────────────────────
+
+/// Schema version 2: standard-level identity with nested `[[spec.pin]]`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RegistryFile {
+struct RawSpecV2 {
+    id: String,
+    name: String,
+    #[serde(default)]
+    homepage: Option<String>,
+    #[serde(default)]
+    repository: Option<String>,
+    #[serde(default)]
+    steward: Option<String>,
+    #[serde(default)]
+    licence: Option<String>,
+    #[serde(default)]
+    notes: Option<String>,
+    #[serde(default)]
+    pin: Vec<PinnedVersion>,
+}
+
+/// Schema version 1: the original flat format, one entry per version.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSpecV1 {
+    id: String,
+    name: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    homepage: Option<String>,
+    #[serde(default)]
+    repository: Option<String>,
+    #[serde(default)]
+    steward: Option<String>,
+    #[serde(default)]
+    licence: Option<String>,
+    #[serde(default)]
+    pinned_ref: Option<String>,
+    vendored_path: String,
+    sha256: String,
+    fetched_at: String,
+    #[serde(default)]
+    poll: Option<Poll>,
+    #[serde(default)]
+    notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegistryFileV2 {
     schema_version: u32,
     #[serde(default)]
-    spec: Vec<Spanned<SpecEntry>>,
+    spec: Vec<Spanned<RawSpecV2>>,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegistryFileV1 {
+    schema_version: u32,
+    #[serde(default)]
+    spec: Vec<Spanned<RawSpecV1>>,
+}
+
+impl RawSpecV1 {
+    fn into_entry(self) -> SpecEntry {
+        SpecEntry {
+            id: self.id,
+            name: self.name,
+            homepage: self.homepage,
+            repository: self.repository,
+            steward: self.steward,
+            licence: self.licence,
+            notes: self.notes,
+            versions: vec![PinnedVersion {
+                version: self.version,
+                pinned_ref: self.pinned_ref,
+                vendored_path: self.vendored_path,
+                sha256: self.sha256,
+                fetched_at: self.fetched_at,
+                poll: self.poll,
+                notes: None,
+            }],
+        }
+    }
+}
+
+impl RawSpecV2 {
+    fn into_entry(self) -> SpecEntry {
+        SpecEntry {
+            id: self.id,
+            name: self.name,
+            homepage: self.homepage,
+            repository: self.repository,
+            steward: self.steward,
+            licence: self.licence,
+            notes: self.notes,
+            versions: self.pin,
+        }
+    }
+}
+
+// ── The public registry type ──────────────────────────────────────────
 
 /// Every specification this repository conforms to, and the provenance of the
 /// bytes it conforms against.
-///
-/// Three operations, deliberately separate:
-///
-/// | Call | Touches the filesystem | Answers |
-/// |---|---|---|
-/// | [`load_path`](Self::load_path) / [`load_str`](Self::load_str) | reads the registry only | is this a registry at all? |
-/// | [`validate`](Self::validate) | no | does it record what a registry must record? |
-/// | [`verify`](Self::verify) | reads each artefact | do the bytes still match? |
-///
-/// The split matters because they fail for unrelated reasons and a caller
-/// usually wants them apart: a CI job may validate on every build but verify
-/// only where the artefacts are checked out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Registry {
     schema_version: u32,
     entries: Vec<SpecEntry>,
     /// One-based line each entry's `[[spec]]` header sits on, parallel to
-    /// `entries`. Kept so a diagnostic can point at a line in a file a human
-    /// is about to edit, rather than at an index they would have to count out.
+    /// `entries`.
     lines: Vec<u32>,
     source: DocumentId,
     root: PathBuf,
@@ -64,15 +146,11 @@ pub struct Registry {
 impl Registry {
     /// Read a registry from a file.
     ///
-    /// [`vendored_path`](SpecEntry::vendored_path) is resolved relative to the
-    /// file's own directory, so a registry at the repository root describes
-    /// repository-relative paths and moves with the repository.
-    ///
     /// # Errors
     ///
-    /// Returns a [`LoadError`] carrying a [`ConformanceReport`] if the file
-    /// cannot be read, is not TOML, does not have the shape of a registry, or
-    /// declares a `schema_version` this crate does not understand.
+    /// Returns a [`LoadError`] if the file cannot be read, is not TOML, does
+    /// not have the shape of a registry, or declares a `schema_version` this
+    /// crate does not understand.
     pub fn load_path(path: impl AsRef<Path>) -> Result<Self, LoadError> {
         let path = path.as_ref();
         let source = DocumentId::new(path.display().to_string());
@@ -90,41 +168,29 @@ impl Registry {
 
     /// Read a registry from text already in hand.
     ///
-    /// `source` names the document in any diagnostic raised against it — a
-    /// path, a URL, or something synthetic like `<test>`.
-    ///
-    /// The root for resolving [`vendored_path`](SpecEntry::vendored_path) is
-    /// the process's current directory; use [`with_root`](Self::with_root) to
-    /// say otherwise.
-    ///
     /// # Errors
     ///
-    /// Returns a [`LoadError`] carrying a [`ConformanceReport`] if the text is
-    /// not TOML, does not have the shape of a registry, or declares a
-    /// `schema_version` this crate does not understand.
+    /// Returns a [`LoadError`] if the text is not TOML, does not have the
+    /// shape of a registry, or declares a `schema_version` this crate does
+    /// not understand.
     pub fn load_str(text: &str, source: impl Into<DocumentId>) -> Result<Self, LoadError> {
         let source = source.into();
 
-        let parsed: RegistryFile = toml::from_str(text).map_err(|error| {
-            let mut location = Location::document(source.clone());
-            if let Some(span) = error.span() {
-                let (line, column) = line_and_column(text, span.start);
-                location = location.with_line(line).with_column(column);
-            }
-            LoadError::single(
-                Diagnostic::error(codes::MALFORMED, location, error.message().to_owned())
-                    .with_spec_ref(spec_ref()),
-            )
-        })?;
+        // Peek at the schema version to pick the right deserialization path.
+        let version = peek_schema_version(text, &source)?;
 
-        if parsed.schema_version != SUPPORTED_SCHEMA_VERSION {
+        if !SUPPORTED_SCHEMA_VERSIONS.contains(&version) {
             return Err(LoadError::single(
                 Diagnostic::error(
                     codes::SCHEMA_VERSION,
                     Location::document(source).with_pointer("/schema_version"),
                     format!(
-                        "registry declares schema_version {}, and this crate understands {SUPPORTED_SCHEMA_VERSION}",
-                        parsed.schema_version
+                        "registry declares schema_version {version}, and this crate understands {}",
+                        SUPPORTED_SCHEMA_VERSIONS
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ),
                 )
                 .with_help(
@@ -135,25 +201,14 @@ impl Registry {
             ));
         }
 
-        let mut entries = Vec::with_capacity(parsed.spec.len());
-        let mut lines = Vec::with_capacity(parsed.spec.len());
-        for spanned in parsed.spec {
-            let (line, _) = line_and_column(text, spanned.span().start);
-            lines.push(line);
-            entries.push(spanned.into_inner());
+        match version {
+            1 => load_v1(text, source),
+            2 => load_v2(text, source),
+            _ => unreachable!(),
         }
-
-        Ok(Self {
-            schema_version: parsed.schema_version,
-            entries,
-            lines,
-            source,
-            root: PathBuf::new(),
-        })
     }
 
-    /// Set the directory [`vendored_path`](SpecEntry::vendored_path) is
-    /// resolved against.
+    /// Set the directory vendored paths are resolved against.
     #[must_use]
     pub fn with_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.root = root.into();
@@ -166,7 +221,7 @@ impl Registry {
         self.schema_version
     }
 
-    /// Every entry, in file order.
+    /// Every entry, in file order. One entry per standard.
     #[must_use]
     pub fn entries(&self) -> &[SpecEntry] {
         &self.entries
@@ -184,22 +239,19 @@ impl Registry {
         &self.source
     }
 
-    /// The directory [`vendored_path`](SpecEntry::vendored_path) resolves
-    /// against.
+    /// The directory vendored paths resolve against.
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// The absolute-or-relative path of one entry's artefact, as this crate
-    /// will look for it.
+    /// The absolute-or-relative path of one version's artefact.
     #[must_use]
-    pub fn artefact_path(&self, entry: &SpecEntry) -> PathBuf {
-        self.root.join(&entry.vendored_path)
+    pub fn artefact_path(&self, version: &PinnedVersion) -> PathBuf {
+        self.root.join(&version.vendored_path)
     }
 
-    /// Where an entry sits in the registry file: the document, the line its
-    /// `[[spec]]` header is on, and a pointer to one of its fields.
+    /// Where an entry sits in the registry file.
     #[must_use]
     pub(crate) fn entry_location(&self, index: usize, field: &str) -> Location {
         let mut location = Location::document(self.source.clone());
@@ -208,6 +260,102 @@ impl Registry {
         }
         location.with_pointer(format!("/spec/{index}/{field}"))
     }
+
+    /// Location for a specific version within an entry.
+    #[must_use]
+    pub(crate) fn version_location(
+        &self,
+        entry_index: usize,
+        version_index: usize,
+        field: &str,
+    ) -> Location {
+        let mut location = Location::document(self.source.clone());
+        if let Some(&line) = self.lines.get(entry_index) {
+            location = location.with_line(line);
+        }
+        location.with_pointer(format!("/spec/{entry_index}/pin/{version_index}/{field}"))
+    }
+}
+
+// ── Version-specific loaders ──────────────────────────────────────────
+
+fn peek_schema_version(text: &str, source: &DocumentId) -> Result<u32, LoadError> {
+    #[derive(Deserialize)]
+    struct Peek {
+        schema_version: u32,
+    }
+    let peek: Peek = toml::from_str(text).map_err(|error| {
+        let mut location = Location::document(source.clone());
+        if let Some(span) = error.span() {
+            let (line, column) = line_and_column(text, span.start);
+            location = location.with_line(line).with_column(column);
+        }
+        LoadError::single(
+            Diagnostic::error(codes::MALFORMED, location, error.message().to_owned())
+                .with_spec_ref(spec_ref()),
+        )
+    })?;
+    Ok(peek.schema_version)
+}
+
+fn load_v1(text: &str, source: DocumentId) -> Result<Registry, LoadError> {
+    let parsed: RegistryFileV1 = toml::from_str(text).map_err(|error| {
+        let mut location = Location::document(source.clone());
+        if let Some(span) = error.span() {
+            let (line, column) = line_and_column(text, span.start);
+            location = location.with_line(line).with_column(column);
+        }
+        LoadError::single(
+            Diagnostic::error(codes::MALFORMED, location, error.message().to_owned())
+                .with_spec_ref(spec_ref()),
+        )
+    })?;
+
+    let mut entries = Vec::with_capacity(parsed.spec.len());
+    let mut lines = Vec::with_capacity(parsed.spec.len());
+    for spanned in parsed.spec {
+        let (line, _) = line_and_column(text, spanned.span().start);
+        lines.push(line);
+        entries.push(spanned.into_inner().into_entry());
+    }
+
+    Ok(Registry {
+        schema_version: parsed.schema_version,
+        entries,
+        lines,
+        source,
+        root: PathBuf::new(),
+    })
+}
+
+fn load_v2(text: &str, source: DocumentId) -> Result<Registry, LoadError> {
+    let parsed: RegistryFileV2 = toml::from_str(text).map_err(|error| {
+        let mut location = Location::document(source.clone());
+        if let Some(span) = error.span() {
+            let (line, column) = line_and_column(text, span.start);
+            location = location.with_line(line).with_column(column);
+        }
+        LoadError::single(
+            Diagnostic::error(codes::MALFORMED, location, error.message().to_owned())
+                .with_spec_ref(spec_ref()),
+        )
+    })?;
+
+    let mut entries = Vec::with_capacity(parsed.spec.len());
+    let mut lines = Vec::with_capacity(parsed.spec.len());
+    for spanned in parsed.spec {
+        let (line, _) = line_and_column(text, spanned.span().start);
+        lines.push(line);
+        entries.push(spanned.into_inner().into_entry());
+    }
+
+    Ok(Registry {
+        schema_version: parsed.schema_version,
+        entries,
+        lines,
+        source,
+        root: PathBuf::new(),
+    })
 }
 
 /// Whether a vendored path is one this crate will follow: relative, and
@@ -232,17 +380,12 @@ fn line_and_column(text: &str, offset: usize) -> (u32, u32) {
     (truncate(line), truncate(column))
 }
 
-/// Saturating `usize` → `u32`, because a line number past four billion is not
-/// worth a wider type on [`Location`].
+/// Saturating `usize` → `u32`.
 fn truncate(value: usize) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
 }
 
 /// A registry that could not be read at all.
-///
-/// Carries a [`ConformanceReport`] rather than a string, so a caller renders a
-/// load failure through exactly the same path as a conformance failure — the
-/// reason this crate depends on `conform-core` in the first place.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadError {
     report: ConformanceReport,

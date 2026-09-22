@@ -385,17 +385,18 @@ fn every_hostile_value_reaches_the_page_escaped_and_never_raw() {
     let registry = Registry::load_str(&hostile(), "<hostile>").expect("the fixture is a registry");
     let entry = &registry.entries()[0];
 
+    let version = entry.default_version();
     let values: Vec<&str> = [
         Some(entry.name.as_str()),
-        entry.version.as_deref(),
+        version.version.as_deref(),
         entry.homepage.as_deref(),
         entry.repository.as_deref(),
         entry.steward.as_deref(),
         entry.licence.as_deref(),
-        entry.pinned_ref.as_deref(),
+        version.pinned_ref.as_deref(),
         entry.notes.as_deref(),
-        entry.poll.as_ref().map(|p| p.endpoint.as_str()),
-        entry.poll.as_ref().and_then(|p| p.method.as_deref()),
+        version.poll.as_ref().map(|p| p.endpoint.as_str()),
+        version.poll.as_ref().and_then(|p| p.method.as_deref()),
     ]
     .into_iter()
     .flatten()

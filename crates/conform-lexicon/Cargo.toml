@@ -10,7 +10,7 @@ name = "conform-lexicon"
 # upstream is the Data Contract Specification, which moves on the
 # `datacontract/datacontract-specification` project's schedule and nobody
 # else's.
-version = "0.1.0"
+version = "0.2.0"
 
 description = "Diagnostic-rich conformance validation for Open Data Contract Lexicon (Data Contract Specification) documents: many located, coded, severity-bearing findings per document, with three-way cross-reference resolution, against a schema whose provenance is enforced."
 readme = "README.md"
@@ -36,7 +36,7 @@ conform-core = { path = "../conform-core", version = "0.1.0" }
 # hard-coding a path, so provenance is enforced at the moment of use rather
 # than asserted in a comment. It is also the only place an upstream URL for
 # this standard is written down in this repository.
-conform-registry = { path = "../conform-registry", version = "0.1.0" }
+conform-registry = { path = "../conform-registry", version = "0.2.0" }
 
 # The vendored ODCL schema declares JSON Schema **draft-07** (`$schema` in the
 # document says so), where the two Bitol schemas this family also validates

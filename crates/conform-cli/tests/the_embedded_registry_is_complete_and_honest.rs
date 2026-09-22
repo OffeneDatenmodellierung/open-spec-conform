@@ -45,7 +45,7 @@ fn every_registry_entry_has_its_bytes_embedded() {
     // Non-vacuity: a registry that parsed to nothing would make every loop
     // below pass without examining anything.
     assert!(
-        registry.entries().len() >= 7,
+        registry.entries().len() >= 6,
         "the embedded registry holds {} entries, which is fewer than this repository vendors — \
          the wrong bytes were embedded",
         registry.entries().len(),
@@ -53,13 +53,15 @@ fn every_registry_entry_has_its_bytes_embedded() {
 
     let mut missing = Vec::new();
     for entry in registry.entries() {
-        if embedded::artefact(&entry.vendored_path).is_none() {
-            missing.push(format!(
-                "`{}` records `vendored_path = \"{}\"` and no bytes are embedded for it; add a \
-                 symbolic link under `crates/conform-cli/embedded/` at that same path and a line \
-                 to `embedded::ARTEFACTS`",
-                entry.id, entry.vendored_path,
-            ));
+        for version in &entry.versions {
+            if embedded::artefact(&version.vendored_path).is_none() {
+                missing.push(format!(
+                    "`{}` records `vendored_path = \"{}\"` and no bytes are embedded for it; add a \
+                     symbolic link under `crates/conform-cli/embedded/` at that same path and a line \
+                     to `embedded::ARTEFACTS`",
+                    entry.id, version.vendored_path,
+                ));
+            }
         }
     }
     assert!(missing.is_empty(), "{}", missing.join("\n"));
@@ -71,7 +73,7 @@ fn nothing_is_embedded_that_the_registry_does_not_record() {
     let recorded: Vec<&str> = registry
         .entries()
         .iter()
-        .map(|entry| entry.vendored_path.as_str())
+        .flat_map(|entry| entry.versions.iter().map(|v| v.vendored_path.as_str()))
         .collect();
 
     // The other direction. Bytes carried for an artefact the catalogue no
@@ -94,20 +96,32 @@ fn the_embedded_bytes_are_the_repositorys_bytes() {
     let registry = embedded_registry();
     let mut faults = Vec::new();
 
-    for (index, entry) in registry.entries().iter().enumerate() {
-        let Some(text) = embedded::artefact(&entry.vendored_path) else {
-            continue; // reported by `every_registry_entry_has_its_bytes_embedded`
-        };
-        let diagnostic = verify_bytes(index, entry, text.as_bytes(), "embedded");
-        if diagnostic.severity >= Severity::Error {
-            faults.push(format!(
-                "`{}`: the embedded bytes hash to {} and the embedded registry records {} — the \
-                 symbolic link was replaced by a copy that has drifted, or this checkout did not \
-                 resolve it",
-                entry.id,
-                sha256_hex(text.as_bytes()),
-                entry.sha256.trim(),
-            ));
+    for (entry_index, entry) in registry.entries().iter().enumerate() {
+        for (version_index, version) in entry.versions.iter().enumerate() {
+            let Some(text) = embedded::artefact(&version.vendored_path) else {
+                continue; // reported by `every_registry_entry_has_its_bytes_embedded`
+            };
+            let label = version
+                .version
+                .as_deref()
+                .map_or_else(|| entry.id.clone(), |v| format!("{}@{v}", entry.id));
+            let diagnostic = verify_bytes(
+                entry_index,
+                version_index,
+                &label,
+                version,
+                text.as_bytes(),
+                "embedded",
+            );
+            if diagnostic.severity >= Severity::Error {
+                faults.push(format!(
+                    "`{label}`: the embedded bytes hash to {} and the embedded registry records {} — the \
+                     symbolic link was replaced by a copy that has drifted, or this checkout did not \
+                     resolve it",
+                    sha256_hex(text.as_bytes()),
+                    version.sha256.trim(),
+                ));
+            }
         }
     }
 
@@ -120,13 +134,15 @@ fn embedded_bytes_that_do_not_match_the_digest_are_refused() {
     let entry = registry
         .find("odcs")
         .expect("the embedded registry records `odcs`");
-    let index = registry
+    let entry_index = registry
         .entries()
         .iter()
         .position(|e| e.id == "odcs")
         .expect("`odcs` has an index");
+    let version = entry.default_version();
+    let version_index = entry.default_version_index();
 
-    let real = embedded::artefact(&entry.vendored_path).expect("`odcs` bytes are embedded");
+    let real = embedded::artefact(&version.vendored_path).expect("`odcs` bytes are embedded");
 
     // The same length, deliberately: a check that compared sizes rather than
     // digests would pass this, and would pass a schema edited to say something
@@ -140,7 +156,14 @@ fn embedded_bytes_that_do_not_match_the_digest_are_refused() {
     );
     assert_ne!(planted, real, "the plant should actually change something");
 
-    let verdict = verify_bytes(index, entry, planted.as_bytes(), "embedded");
+    let verdict = verify_bytes(
+        entry_index,
+        version_index,
+        "odcs",
+        version,
+        planted.as_bytes(),
+        "embedded",
+    );
     assert!(
         verdict.severity >= Severity::Error,
         "bytes that do not hash to the recorded digest must be refused, and this returned \
@@ -157,7 +180,14 @@ fn embedded_bytes_that_do_not_match_the_digest_are_refused() {
 
     // And the real bytes still pass, so the assertion above is about the plant
     // rather than about the checker refusing everything.
-    let control = verify_bytes(index, entry, real.as_bytes(), "embedded");
+    let control = verify_bytes(
+        entry_index,
+        version_index,
+        "odcs",
+        version,
+        real.as_bytes(),
+        "embedded",
+    );
     assert!(
         control.severity < Severity::Error,
         "the genuine embedded bytes should pass the same check: {}",

@@ -9,7 +9,7 @@ name = "conform-ffi"
 # pin one without pinning the rest (plan §7.2, spec FR-011). This crate's
 # cadence is the slowest of the lot on purpose — its compatibility surface is a
 # C ABI, and an ABI that moves is an ABI nobody can link against twice.
-version = "0.1.0"
+version = "0.1.1"
 
 description = "An optional C ABI over the conformance harness: a handle, bytes in, a JSON report out, and never an unwind across the boundary."
 readme = "README.md"
@@ -82,13 +82,13 @@ conform-core = { path = "../conform-core", version = "0.1.0" }
 # reason every other consumer does: a verdict issued against an unverified
 # schema is not a conformance verdict, and an embedder cannot see that from the
 # other side of a C ABI.
-conform-registry = { path = "../conform-registry", version = "0.1.0" }
+conform-registry = { path = "../conform-registry", version = "0.2.0" }
 
 # The two document-shaped adapters. See `src/engine.rs` for why `conform-okf`
 # is deliberately absent: it validates a *directory*, and a bytes-in boundary
 # has nothing to hand it.
-conform-odcs = { path = "../conform-odcs", version = "0.1.0" }
-conform-odps = { path = "../conform-odps", version = "0.1.0" }
+conform-odcs = { path = "../conform-odcs", version = "0.2.0" }
+conform-odps = { path = "../conform-odps", version = "0.2.0" }
 
 # The boundary speaks JSON. This crate owns its own envelope types rather than
 # enabling `conform-core/serde`, for the reason `conform-cli` gives for owning
@@ -119,7 +119,7 @@ serde_json = "1"
 # `tests/hostile_text_crosses_as_json.rs` builds its expectations from the
 # adapter's own diagnostics, so that it compares the boundary against the
 # harness rather than against a transcription of it.
-conform-odcs = { path = "../conform-odcs", version = "0.1.0" }
+conform-odcs = { path = "../conform-odcs", version = "0.2.0" }
 
 [[test]]
 name = "the_header_matches_the_library"

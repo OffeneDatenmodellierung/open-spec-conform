@@ -141,26 +141,25 @@ fn no_fact_from_the_real_registry_survives_the_substitution() {
 
     let mut leaked = Vec::new();
     for (index, entry) in real.entries().iter().enumerate() {
-        let mut facts = vec![
-            entry.id.clone(),
-            entry.name.clone(),
-            entry.sha256.clone(),
-            entry.vendored_path.clone(),
-        ];
+        let mut facts = vec![entry.id.clone(), entry.name.clone()];
         facts.extend(
             [
-                entry.version.clone(),
                 entry.homepage.clone(),
                 entry.repository.clone(),
                 entry.steward.clone(),
                 entry.licence.clone(),
-                entry.pinned_ref.clone(),
             ]
             .into_iter()
             .flatten(),
         );
-        if let Some(poll) = &entry.poll {
-            facts.push(poll.endpoint.clone());
+        for version in &entry.versions {
+            facts.push(version.sha256.clone());
+            facts.push(version.vendored_path.clone());
+            facts.extend(version.version.clone());
+            facts.extend(version.pinned_ref.clone());
+            if let Some(poll) = &version.poll {
+                facts.push(poll.endpoint.clone());
+            }
         }
 
         for fact in facts {
@@ -215,12 +214,14 @@ fn the_substitution_check_is_not_vacuous() {
             );
             checked += 1;
         }
-        assert!(
-            real_page.contains(&entry.sha256),
-            "the real page should show the digest for `{}`",
-            entry.id,
-        );
-        checked += 1;
+        for version in &entry.versions {
+            assert!(
+                real_page.contains(&version.sha256),
+                "the real page should show the digest for `{}`",
+                entry.id,
+            );
+            checked += 1;
+        }
     }
 
     assert!(

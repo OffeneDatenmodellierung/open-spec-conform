@@ -9,7 +9,7 @@ name = "conform-okf"
 # pin one without pinning the rest (plan §7.2, spec FR-011). It matters more
 # here than anywhere: this crate tracks a specification whose release cadence is
 # Google's, and `okf-core`'s, which is one independent author's.
-version = "0.1.0"
+version = "0.1.1"
 
 description = "Open Knowledge Format v0.2 conformance and hygiene checking, reported as conform-core diagnostics."
 readme = "README.md"
@@ -109,7 +109,7 @@ serde = { version = "1", default-features = false, features = ["std", "derive"],
 # resolves to a real entry in the repository's `specs.toml`, pinned to the
 # commit the fixtures came from. A `spec_ref` that leads nowhere is decoration,
 # and nothing else in the workspace would notice.
-conform-registry = { path = "../conform-registry", version = "0.1.0" }
+conform-registry = { path = "../conform-registry", version = "0.2.0" }
 
 [lints]
 workspace = true

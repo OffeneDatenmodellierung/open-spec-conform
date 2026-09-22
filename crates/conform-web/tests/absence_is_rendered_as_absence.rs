@@ -26,7 +26,14 @@ use conform_web::{Site, render};
 fn not_recorded() -> String {
     let registry = Registry::load_str(ALL_ABSENT, "<absent>").expect("the fixture is a registry");
     let entry = &registry.entries()[0];
-    let summary = conform_cli::model::SpecSummary::new(entry, registry.verify_entry(0, entry));
+    let version = entry.default_version();
+    let vi = entry.default_version_index();
+    let summary = conform_cli::model::SpecSummary::new(
+        entry,
+        version,
+        true,
+        registry.verify_version(0, vi, version),
+    );
 
     let mut rendered = Vec::new();
     let run = conform_cli::model::Run {

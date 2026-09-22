@@ -108,15 +108,17 @@ fn facts() -> Vec<Fact> {
         };
 
         push("name", Some(&entry.name));
-        push("sha256", Some(&entry.sha256));
-        push("vendored_path", Some(&entry.vendored_path));
-        push("version", entry.version.as_deref());
         push("homepage", entry.homepage.as_deref());
         push("repository", entry.repository.as_deref());
         push("steward", entry.steward.as_deref());
-        push("pinned_ref", entry.pinned_ref.as_deref());
-        if let Some(poll) = &entry.poll {
-            push("poll.endpoint", Some(&poll.endpoint));
+        for version in &entry.versions {
+            push("sha256", Some(&version.sha256));
+            push("vendored_path", Some(&version.vendored_path));
+            push("version", version.version.as_deref());
+            push("pinned_ref", version.pinned_ref.as_deref());
+            if let Some(poll) = &version.poll {
+                push("poll.endpoint", Some(&poll.endpoint));
+            }
         }
     }
     facts

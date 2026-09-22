@@ -7,7 +7,7 @@ name = "conform-registry"
 # crate in this family releases on its own cadence, because each tracks a
 # different upstream on a different release cycle and consumers must be able to
 # pin one without pinning the rest (plan §7.2, spec FR-011).
-version = "0.1.0"
+version = "0.2.0"
 
 description = "Machine-readable provenance for vendored specification artefacts: what upstream they came from, which immutable ref they are pinned to, and whether the local bytes still match."
 readme = "README.md"

@@ -10,7 +10,7 @@ name = "conform-odps"
 # upstream is the Open Data Product Standard, which is a *different* document
 # on a *different* cadence from the contract standard its sibling crate tracks
 # — which is why these are two crates and not one with a feature flag.
-version = "0.1.0"
+version = "0.2.0"
 
 description = "Diagnostic-rich conformance validation for Open Data Product Standard documents: many located, coded, severity-bearing findings per document, against a schema whose provenance is enforced."
 readme = "README.md"
@@ -35,7 +35,7 @@ conform-core = { path = "../conform-core", version = "0.1.0" }
 # version, no source URL and no fetch date, and is the defect that motivated
 # `conform-registry`. This crate resolves through the registry so that history
 # cannot repeat quietly.
-conform-registry = { path = "../conform-registry", version = "0.1.0" }
+conform-registry = { path = "../conform-registry", version = "0.2.0" }
 
 # The schema is JSON Schema 2019-09 (`$schema` in the vendored document says
 # so). `default-features = false` drops the `reqwest`-backed remote-reference
