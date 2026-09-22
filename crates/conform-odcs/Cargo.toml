@@ -9,7 +9,7 @@ name = "conform-odcs"
 # pin one without pinning the rest (plan §7.2, spec FR-011). For this crate the
 # upstream is the Open Data Contract Standard, which moves on Bitol's schedule
 # and nobody else's.
-version = "0.1.0"
+version = "0.2.0"
 
 description = "Diagnostic-rich conformance validation for Open Data Contract Standard documents: many located, coded, severity-bearing findings per document, against a schema whose provenance is enforced."
 readme = "README.md"

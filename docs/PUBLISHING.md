@@ -16,9 +16,9 @@ last-modified: 2026-09-22
 
 **A published version is permanent.** `cargo yank` marks a version
 un-resolvable for new dependants; it does not delete it, and it does not free
-the number. Every crate in this family sits at `0.1.0`. If a broken `0.1.0`
-goes out, there is no second `0.1.0` — the next release is `0.1.1`, and the
-broken one stays on the registry forever with a yank flag on it.
+the number. If a broken version goes out, that number is spent — the next
+release is a bump, and the broken one stays on the registry forever with a yank
+flag on it.
 
 That is why `.github/workflows/release.yml` is `workflow_dispatch` only, why
 its dry-run input defaults to *true*, and why a real upload needs the word

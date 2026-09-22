@@ -52,7 +52,7 @@ conform-registry = { path = "../conform-registry", version = "0.2.0" }
 # nothing in the dependency graph — `conform-cli` is already in this
 # workspace's tree and adds no crate to it that is not already there — and it
 # buys a guarantee that no amount of care in a second implementation would.
-conform-cli = { path = "../conform-cli", version = "0.1.0" }
+conform-cli = { path = "../conform-cli", version = "0.2.0" }
 
 # The crate table on the page is read from `crates/*/Cargo.toml` rather than
 # transcribed, so a crate that is added, renamed or released cannot leave a

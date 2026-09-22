@@ -10,7 +10,7 @@ name = "conform-lexicon"
 # upstream is the Data Contract Specification, which moves on the
 # `datacontract/datacontract-specification` project's schedule and nobody
 # else's.
-version = "0.1.0"
+version = "0.2.0"
 
 description = "Diagnostic-rich conformance validation for Open Data Contract Lexicon (Data Contract Specification) documents: many located, coded, severity-bearing findings per document, with three-way cross-reference resolution, against a schema whose provenance is enforced."
 readme = "README.md"

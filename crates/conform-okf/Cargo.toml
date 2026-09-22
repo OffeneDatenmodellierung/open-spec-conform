@@ -9,7 +9,7 @@ name = "conform-okf"
 # pin one without pinning the rest (plan §7.2, spec FR-011). It matters more
 # here than anywhere: this crate tracks a specification whose release cadence is
 # Google's, and `okf-core`'s, which is one independent author's.
-version = "0.1.0"
+version = "0.1.1"
 
 description = "Open Knowledge Format v0.2 conformance and hygiene checking, reported as conform-core diagnostics."
 readme = "README.md"
