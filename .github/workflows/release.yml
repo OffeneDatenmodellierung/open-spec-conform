@@ -19,6 +19,16 @@
 #   * `CARGO_REGISTRY_TOKEN` is bound to the single step that uploads, not to
 #     the workflow, the job, or the dry run.
 #
+# Both loops are **resumable**. Each asks tools/publish-status.py whether the
+# exact `name@version` in front of it is already on the crates.io index, and
+# skips it if so. This is not a refinement; it is what makes a release
+# finishable. On 2026-09-21 a run published five crates, hit crates.io's
+# new-crate rate limit on the sixth, and every rerun afterwards died
+# immediately on `error: crate conform-core@0.1.0 already exists on crates.io
+# index` — five crates permanent, eight uncreatable, and no way forward. A
+# publish loop that cannot be run twice cannot recover from being interrupted
+# once, and something will always interrupt it.
+#
 # Actions are pinned by commit SHA rather than by tag. A tag is mutable: the
 # author of a pinned-by-tag action can change what `@v4` means after review,
 # and this is the workflow that holds a registry token. The tag each SHA
@@ -42,9 +52,9 @@ on:
         description: >-
           Which crates to publish, space-separated — or "all" for the full
           sequence. Order does not matter: whatever is named is reordered into
-          dependency order, and anything not publishable is refused. The first release must be done a few at
-          a time: a crate cannot be verified until everything it depends on is
-          already on crates.io.
+          dependency order, and anything not publishable is refused. Anything
+          already on crates.io at the version in this tree is skipped, so
+          "all" is the right answer when resuming an interrupted release.
         type: string
         default: all
       dry_run:
@@ -58,6 +68,16 @@ on:
           Type the word `publish` to allow a real upload. Ignored on a dry run.
         type: string
         default: ""
+      max_wait_minutes:
+        description: >-
+          Total minutes this run may spend waiting out crates.io's new-crate
+          rate limit, across all crates. crates.io allows a burst of 5 new
+          crates and then earns back one per 10 minutes, so a full thirteen
+          from an empty bucket needs about two hours; 90 covers the eight this
+          workspace currently has outstanding. When the budget runs out the
+          run fails and names what is left. Ignored on a dry run.
+        type: string
+        default: "90"
 
 # Read-only by default. The publish job does not write to this repository:
 # tags, changelogs and GitHub releases are `release-plz`'s job, not this one.
@@ -124,6 +144,14 @@ jobs:
     needs: gates
     runs-on: ubuntu-latest
 
+    # Waiting out a rate limit has to be bounded by something, and the thing
+    # it has to be bounded by is this. A job killed by its own timeout prints
+    # no summary, so `max_wait_minutes` is checked against this number before
+    # anything uploads — see "Work out the sequence". **If you change this,
+    # change JOB_TIMEOUT_MINUTES in that step**; they are the same number
+    # written twice because a workflow cannot read its own `timeout-minutes`.
+    timeout-minutes: 180
+
     # A GitHub Environment, so that a real upload can be put behind required
     # reviewers in repository settings. Referencing one that does not exist
     # creates it unprotected, so this is an invitation rather than a guarantee
@@ -167,8 +195,29 @@ jobs:
         id: plan
         env:
           REQUESTED: ${{ inputs.crates }}
+          MAX_WAIT_MINUTES: ${{ inputs.max_wait_minutes }}
         run: |
           set -euo pipefail
+
+          # The publish job's `timeout-minutes`, restated because a workflow
+          # cannot read its own. The reserve is what the cargo work itself
+          # needs: thirteen verification builds, each compiling the crate and
+          # its test targets from an extracted tarball.
+          JOB_TIMEOUT_MINUTES=180
+          BUILD_RESERVE_MINUTES=60
+          WAIT_CEILING=$(( JOB_TIMEOUT_MINUTES - BUILD_RESERVE_MINUTES ))
+
+          case "$MAX_WAIT_MINUTES" in
+            ''|*[!0-9]*)
+              echo "::error::max_wait_minutes must be a whole number of minutes, got '$MAX_WAIT_MINUTES'."
+              exit 1 ;;
+          esac
+          if [ "$MAX_WAIT_MINUTES" -gt "$WAIT_CEILING" ]; then
+            echo "::error::max_wait_minutes=$MAX_WAIT_MINUTES exceeds what this job can sit through. The job times out after ${JOB_TIMEOUT_MINUTES}m and needs about ${BUILD_RESERVE_MINUTES}m for the verification builds, so the most it can wait is ${WAIT_CEILING}m. Raise the job's timeout-minutes as well, or publish the sequence in two dispatches."
+            exit 1
+          fi
+          echo "Rate-limit wait budget: ${MAX_WAIT_MINUTES}m (ceiling ${WAIT_CEILING}m)."
+
           ORDER="$(./tools/publish-order.py)"
           echo "Publishable, in dependency order: $ORDER"
 
@@ -203,23 +252,65 @@ jobs:
       # No token in this step's environment. `--dry-run` packages and runs the
       # verification build; it uploads nothing and needs no credential.
       #
-      # Before the first release this is expected to fail from
-      # `conform-registry` onward, because a crate cannot be verified while its
-      # path dependencies are absent from the registry. That is the registry's
-      # ordering rule showing through, not a defect in this tree — publish the
-      # first crate, then dry-run the next. docs/PUBLISHING.md walks it.
+      # Crates already on the index are skipped here too, and that is what
+      # makes a dry run *useful* in a half-published workspace rather than
+      # merely survivable. Re-verifying a crate that is already permanent
+      # proves nothing — the tarball on crates.io is the one that shipped, and
+      # this tree cannot change it. What a dry run is being asked is "is what
+      # remains fit to publish", so what remains is exactly what it checks,
+      # and the published crates it skips are the dependencies that let the
+      # rest verify at all.
+      #
+      # Before the *first* release this is still expected to fail from
+      # `conform-registry` onward, because a crate cannot be verified while
+      # its path dependencies are absent from the registry. That is the
+      # registry's ordering rule showing through, not a defect in this tree —
+      # publish the first crate, then dry-run the next. docs/PUBLISHING.md
+      # walks it.
       - name: cargo publish --dry-run
         if: ${{ inputs.dry_run }}
         env:
           SEQUENCE: ${{ steps.plan.outputs.sequence }}
         run: |
           set -euo pipefail
+
+          verified=""
+          skipped=""
+
           for crate in $SEQUENCE; do
-            echo "::group::cargo publish --dry-run -p $crate"
+            # The index is asked, not cargo's error text. A run that inferred
+            # "already published" from the words in a failure would also
+            # infer it from failures that mean something else entirely.
+            # `set -e` makes an unreachable index stop the run rather than be
+            # guessed at.
+            status="$(./tools/publish-status.py "$crate")"
+            decision="$(printf '%s' "$status" | cut -f1)"
+            reason="$(printf '%s' "$status" | cut -f4-)"
+
+            if [ "$decision" = "skip" ]; then
+              echo "SKIP $crate — $reason. Nothing in this tree can change a published tarball, so there is nothing here to verify."
+              skipped="${skipped:+$skipped }$crate"
+              continue
+            fi
+
+            echo "::group::cargo publish --dry-run -p $crate ($reason)"
             cargo publish --dry-run --locked -p "$crate"
             echo "::endgroup::"
+            verified="${verified:+$verified }$crate"
           done
+
           echo "Dry run complete. Nothing was uploaded."
+          echo "VERIFIED THIS RUN: ${verified:-(none)}"
+          echo "SKIPPED (already on index): ${skipped:-(none)}"
+
+          {
+            echo "### Dry run"
+            echo
+            echo "- **Verified this run:** ${verified:-_none_}"
+            echo "- **Skipped (already on index):** ${skipped:-_none_}"
+            echo
+            echo "Nothing was uploaded."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The only step in this workflow that can reach crates.io with a
       # credential, and the only one the token is bound to. Reached only when
@@ -230,15 +321,180 @@ jobs:
       # middle fails, earlier ones are already permanent — see the
       # "half-published workspace" section of docs/PUBLISHING.md, which is
       # written for exactly that morning.
+      #
+      # Three things make this loop finishable rather than merely repeatable:
+      #
+      #   1. It skips what the index already has, so a rerun resumes instead
+      #      of dying on the first crate that succeeded last time.
+      #   2. It waits out crates.io's new-crate rate limit rather than
+      #      treating it as a failure. The limit is a burst of 5 new crates
+      #      and one more every 10 minutes thereafter
+      #      (crates.io's own `LimitedAction::PublishNew`: burst 5,
+      #      rate 600s), which is precisely what stopped the 2026-09-21 run
+      #      on its sixth crate. The 429 says when the next one is due, cargo
+      #      prints that sentence, and this waits until then.
+      #   3. It ends by asking the index what is actually there, and fails if
+      #      anything asked for is missing — so a green tick means the release
+      #      is finished, not that the script ran out of things to try.
       - name: cargo publish
         if: ${{ !inputs.dry_run }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           SEQUENCE: ${{ steps.plan.outputs.sequence }}
+          MAX_WAIT_MINUTES: ${{ inputs.max_wait_minutes }}
         run: |
           set -euo pipefail
+
+          # crates.io's exact wording for the new-crate limit, from
+          # `LimitedAction::error_message` in its source. Matching on a
+          # failure's text is the wrong way to decide that a crate is
+          # *already published* — "already exists" appears in failures that
+          # mean other things, and treating those as "carry on" hides them.
+          # It is the right way to decide *this*, for two reasons that do not
+          # apply to the other case. The string names one specific documented
+          # condition rather than a generic phrase; and the default here is
+          # to fail. An error this does not recognise stops the run, so a
+          # missed match costs a retry, never a swallowed failure.
+          RATE_LIMIT_SIGNAL='You have published too many new crates in a short period of time'
+
+          # crates.io earns back one new-crate token every 10 minutes. Used
+          # when the 429 arrives without a parseable time, so a run never
+          # sleeps on a guess it cannot justify.
+          DEFAULT_WAIT_SECONDS=600
+
+          # Clock skew, and the index's own propagation, both argue for
+          # landing slightly after the moment crates.io names rather than on
+          # it.
+          WAIT_MARGIN_SECONDS=15
+
+          # A crate rate-limited this many times in one run is not making
+          # progress that more waiting will fix. The budget below is the real
+          # bound; this is the backstop against spinning inside it — a retry
+          # time already in the past would otherwise loop without ever
+          # spending any of it.
+          MAX_ATTEMPTS_PER_CRATE=8
+
+          budget=$(( MAX_WAIT_MINUTES * 60 ))
+          waited=0
+
+          published_now=""
+          skipped=""
+          failure=""
+
           for crate in $SEQUENCE; do
-            echo "::group::cargo publish -p $crate"
-            cargo publish --locked -p "$crate"
-            echo "::endgroup::"
+            status="$(./tools/publish-status.py "$crate")"
+            decision="$(printf '%s' "$status" | cut -f1)"
+            version="$(printf '%s' "$status" | cut -f3)"
+            reason="$(printf '%s' "$status" | cut -f4-)"
+
+            if [ "$decision" = "skip" ]; then
+              echo "SKIP $crate — $reason. A published version cannot be replaced, and this run has nothing to add to it."
+              skipped="${skipped:+$skipped }$crate"
+              continue
+            fi
+
+            attempt=1
+            while :; do
+              echo "::group::cargo publish -p $crate ($version, attempt $attempt)"
+              log="$(mktemp)"
+              rc=0
+              cargo publish --locked -p "$crate" 2>&1 | tee "$log" || rc=$?
+              echo "::endgroup::"
+
+              if [ "$rc" -eq 0 ]; then
+                echo "PUBLISHED $crate@$version"
+                published_now="${published_now:+$published_now }$crate"
+                break
+              fi
+
+              if ! grep -qF "$RATE_LIMIT_SIGNAL" "$log"; then
+                echo "::error::$crate@$version failed to publish, and not because of the new-crate rate limit. The sequence stops here: every crate after it depends on something in front of it. See the log above for what cargo said."
+                failure="$crate"
+                break
+              fi
+
+              if [ "$attempt" -ge "$MAX_ATTEMPTS_PER_CRATE" ]; then
+                echo "::error::$crate@$version has been rate-limited $attempt times in this run without succeeding. Stopping rather than retrying further."
+                failure="$crate"
+                break
+              fi
+
+              # crates.io names the moment the next new crate is due, in the
+              # 429 body, and cargo prints it. Waiting until then beats
+              # guessing at an interval: the bucket may be most of the way
+              # refilled already.
+              due="$(sed -n 's/.*Please try again after \(.*\) and see.*/\1/p' "$log" | head -n 1)"
+              sleep_for=""
+              if [ -n "$due" ]; then
+                if target="$(date -u -d "$due" +%s 2>/dev/null)"; then
+                  now="$(date -u +%s)"
+                  sleep_for=$(( target - now + WAIT_MARGIN_SECONDS ))
+                  if [ "$sleep_for" -lt "$WAIT_MARGIN_SECONDS" ]; then
+                    # The named moment has already passed — clock skew, or a
+                    # slow verification build. Waiting the margin is enough.
+                    sleep_for="$WAIT_MARGIN_SECONDS"
+                  fi
+                  echo "crates.io says the next new crate is due at $due."
+                fi
+              fi
+              if [ -z "$sleep_for" ]; then
+                sleep_for="$DEFAULT_WAIT_SECONDS"
+                echo "The 429 carried no time this could read, so falling back to crates.io's documented ${DEFAULT_WAIT_SECONDS}s refill interval."
+              fi
+
+              if [ $(( waited + sleep_for )) -gt "$budget" ]; then
+                echo "::error::$crate@$version is rate-limited and waiting ${sleep_for}s for it would take this run past its ${MAX_WAIT_MINUTES}m budget (${waited}s already spent). Nothing is wrong with the tree: crates.io allows a burst of 5 new crates and one more every 10 minutes, and this release wants more than that in one sitting. Re-dispatch with crates: all once the limit has eased — everything already published will be skipped — or raise max_wait_minutes, up to the job's timeout."
+                failure="$crate"
+                break
+              fi
+
+              waited=$(( waited + sleep_for ))
+              echo "Rate-limited on $crate@$version. Waiting ${sleep_for}s (${waited}s of ${budget}s budget spent), then trying again."
+              sleep "$sleep_for"
+              attempt=$(( attempt + 1 ))
+            done
+
+            if [ -n "$failure" ]; then
+              break
+            fi
           done
+
+          # What is on crates.io is the only thing that settles whether this
+          # release happened, so the summary asks the index rather than
+          # trusting the bookkeeping above. The two agreeing is the point; if
+          # cargo exited 0 on something that never landed, this is what
+          # notices.
+          missing=""
+          for crate in $SEQUENCE; do
+            if [ "$(./tools/publish-status.py "$crate" | cut -f1)" = "publish" ]; then
+              missing="${missing:+$missing }$crate"
+            fi
+          done
+
+          echo "PUBLISHED THIS RUN: ${published_now:-(none)}"
+          echo "SKIPPED (already on index): ${skipped:-(none)}"
+          echo "STILL MISSING: ${missing:-(none)}"
+
+          {
+            echo "### Publish to crates.io"
+            echo
+            echo "- **Published this run:** ${published_now:-_none_}"
+            echo "- **Skipped (already on index):** ${skipped:-_none_}"
+            echo "- **Still missing:** ${missing:-_none_}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$missing" ]; then
+            echo "::error::The release is not finished. Still missing from crates.io: $missing. Re-dispatch with crates: all — everything already published is skipped, so this resumes rather than restarts."
+            {
+              echo
+              echo "**The release is not finished.** Re-dispatch with \`crates: all\`;"
+              echo "everything already published is skipped."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "Every crate in the sequence is on crates.io."
+          {
+            echo
+            echo "Every crate in the sequence is on crates.io."
+          } >> "$GITHUB_STEP_SUMMARY"
